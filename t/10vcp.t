@@ -10,52 +10,139 @@ use strict ;
 
 use Carp ;
 use Test ;
-use IPC::Run qw( run ) ;
+use VCP::TestUtils qw( vcp_cmd );
+use constant is_win32 => $^O =~ /Win32/;
 
-my %seen ;
-my @perl = ( $^X, map {
-      my $s = $_ ;
-      $s = File::Spec->rel2abs( $_ ) ;
-      "-I$s" ;
-   } grep ! $seen{$_}++, @INC
-) ;
+my @vcp = vcp_cmd ;
 
-## We always run vcp by doing a @perl, vcp, to make sure that vcp runs under
-## the same version of perl that we are running under.
-my $vcp = 'vcp' ;
-$vcp = "bin/$vcp"    if -e "bin/$vcp" ;
-$vcp = "../bin/$vcp" if -e "../bin/$vcp" ;
+my $options = <<'END_TRANSFER';
+Options: --help
+END_TRANSFER
 
-$vcp = File::Spec->rel2abs( $vcp ) ;
+# Note the spaces instead of tabs and the spaces after the null:
+my $null_transfer = <<'END_TRANSFER';
+Source:
+        null:   
 
-my @vcp = ( @perl, $vcp ) ;
+Destination:    null:  
+END_TRANSFER
 
+my $null_source = <<'END_TRANSFER';
+Source: null:   
+END_TRANSFER
 
-sub vcp {
-   my $exp_results = shift ;
-   my $out ;
-   my $err ;
-   my $pid = run( [ @vcp, @_ ], \undef, \$out, \$err ) ;
-   confess "$vcp ", join( ' ', @_ ), " returned $?\n$out$err"
-      if defined $exp_results && ! grep $? == $_ << 8, @$exp_results ;
-   return $err . $out ;
+my $null_destination = <<'END_TRANSFER';
+Destination: null:   
+END_TRANSFER
+
+# Note the spaces instead of tabs and the spaces after the null:
+my $identity_transfer = <<'END_TRANSFER';
+Source:
+        null:   
+
+Destination:    null:  
+
+Identity:
+END_TRANSFER
+
+sub _ok {
+   my ( $cli_params, $stdin, $exp_return_codes, $expected ) = @_;
+
+   my ( $out, $err ) = ( "", "" );
+   my $ok = eval {
+      VCP::TestUtils::run [ @vcp, @$cli_params ],
+         \$stdin,
+         \$out,
+         \$err,
+         { ok_result_codes => $exp_return_codes };
+      1;
+   };
+
+   warn "$err" if $err && ! $ok;
+
+   @_ = (
+      $ok ? defined $expected ? "$out$err" : $ok : $@,
+      defined $expected ? $expected : 1,
+      join " ",
+         "vcp",
+         @$cli_params,
+         $stdin ? qq{\\"$stdin"} : ()
+   );
+   goto &ok;
 }
 
 
 my @tests = (
+
 #perldoc now complains when run as root, causing this test to fail
-#sub { ok( vcp( [ 0 ], 'help' ),  qr/OPTIONS/s ) },
-sub { ok( vcp( [ 2 ], 'foo:' ),   qr/unknown source scheme/s ) },
-sub { ok( vcp( [ 2 ], 'revml:', 'foo:' ),   qr/unknown destination scheme/s ) },
-sub { ok( vcp( [ 1 ], '--foo' ), qr/foo.*Usage/s ) },
+sub {
+   return skip "perldoc may not be run as root", 1 unless $< || is_win32;
+   _ok [ "help" ], undef, [0], qr/help topics/i;
+},
+sub {
+   return skip "perldoc may not be run as root", 1 unless $< || is_win32;
+   _ok [ "--help" ], undef, [0], qr/help topics/i
+},
+
+sub { _ok [ "vcp:-"  ], $options, [0], qr/help topics/i },
+
+sub { _ok [ "scan",     "vcp:-"  ], $null_transfer,    [0]; },
+sub { _ok [ "scan",     "vcp:-"  ], $null_source,      [0]; },
+sub { _ok [ "filter",   "vcp:-"  ], $null_transfer,    [0]; },
+sub { _ok [ "filter",   "vcp:-"  ], "",                [0]; },
+
+sub { _ok [ "filter",   "vcp:-"  ], $null_source,      [0]; },
+sub { _ok [ "filter",   "vcp:-"  ], $null_destination, [0]; },
+sub { _ok [ "transfer", "vcp:-"  ], $null_transfer,    [0]; },
+
+sub { _ok [ qw( null: null:                     ) ]                     },
+sub { _ok [ qw( null: identity: null:           ) ]                     },
+sub { _ok [ qw( null: identity: identity: null: ) ]                     },
+sub { _ok [ "vcp:-"                               ], $null_transfer     },
+sub { _ok [ "vcp:-"                               ], $identity_transfer },
+
+sub { _ok [ 'foo:'           ], undef, [ 2 ],
+    qr/unknown source scheme(.*:){3,}/s  },
+sub { _ok [ 'revml:', 'foo:' ], undef, [ 2 ],
+    qr/unknown dest\w* scheme(.*:){3,}/s },
+sub { _ok [ '--foo'          ], undef, [ 1 ],
+    qr/foo.*Usage/s             },
+
+sub {
+   local $ENV{VCPDEBUG} = "1";
+   _ok [ "help" ], undef, undef, qr/debugging/i;
+},
+
+sub {
+   _ok [
+         "--output-config-file=-",
+         "vcp:-"
+      ],
+      $null_transfer,
+      [0],
+      qr/Source:.*null:.*Dest:.*null:/s;
+},
+
+sub {
+   _ok [
+         "--output-config-file=-",
+         "vcp:-"
+      ],
+      $identity_transfer,
+      [0],
+      qr/Source:.*null:.*Dest:.*null:.*Identity:/s;
+},
+sub {
+   _ok [
+         "--output-config-file=-",
+         qw( null: identity: identity: null: )
+      ],
+      undef,
+      [0],
+      qr/Source:.*null:.*Dest:.*null:.*Identity:.*Identity:/s;
+},
 ) ;
 
 plan tests => scalar( @tests ) ;
-
-unless ( -e $vcp ) {
-   print STDERR "# '$vcp' not found\n" ;
-   skip( 1, '' ) for @tests ;
-   exit ;
-}
 
 $_->() for @tests ;

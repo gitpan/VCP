@@ -1,0 +1,99 @@
+#!/usr/local/bin/perl -w
+
+=head1 NAME
+
+compile_dtd
+
+=head1 SYNOPSIS
+
+   compile_dtd <dtd file>
+
+=head1 DESCRIPTION
+
+C<compile_dtd <dtd-file> <output-file>
+
+Compile a revml dtd file into a perl module (.pm)
+
+=head2 Environment Variables
+
+=over
+
+=for test_scripts t/10compile_dtd.t
+
+=cut
+
+use strict ;
+use RevML::Doctype;
+
+
+
+my $doctype = RevML::Doctype->new( @ARGV ? shift @ARGV : "revml.dtd" ) ;
+
+save_as_pm( @ARGV );
+
+
+=item save_as_pm
+
+Compile and save a revml .dtd as a perl module (.pm file)
+
+=back
+
+=cut
+
+sub save_as_pm {
+   my ( $out_spec ) = @_ ;
+   ## TODO: Try to prevent accidental overwrites by looking for
+   ## the destination and diffing, then prompting if a diff is
+   ## found.
+   $out_spec = "RevML::Doctype::v" . $doctype->version
+      unless defined $out_spec ;
+
+   $out_spec =~ s/\./_/g ;
+
+   if ( $out_spec ne '-' ) {
+      my $out_file = $out_spec ;
+      $out_file =~ s{::}{/}g ;
+      $out_file =~ s{^/+}{}g ;
+      $out_file .= '.pm' ;
+
+      require File::Basename ;
+      my $out_dir = File::Basename::dirname( $out_file ) ;
+
+      if ( -d File::Spec->catdir( 'lib', $out_dir ) ) {
+	 $out_file = File::Spec->catfile( 'lib', $out_file ) ;
+      }
+      elsif ( ! -d $out_dir ) {
+	 $out_file = File::Basename::fileparse( $out_file ) ;
+      }
+
+      print "writing RevML v" . $doctype->version . " to '$out_file' as '$out_spec'.\n" ;
+      open( F, ">$out_file" ) || die "$! $out_file" ;
+      print F $doctype->as_pm( $out_spec ) ;
+      close F ;
+
+      ## Test for compilability if we saved it.
+      exec( 'perl', '-w', $out_file ) if defined $out_file ;
+   }
+   else {
+      print $doctype->as_pm( $out_spec ) ;
+   }
+
+   return ;
+}
+
+
+
+
+
+=head1 AUTHOR
+
+Barrie Slaymaker <barries@slaysys.com>, John Fetkovich <fetko@slaysys.com>
+
+=head1 COPYRIGHT
+
+Copyright (c) 2000, 2001, 2002 Perforce Software, Inc.
+All rights reserved.
+
+See L<VCP::License|VCP::License> (C<vcp help license>) for the terms of use.
+
+=cut

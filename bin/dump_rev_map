@@ -1,0 +1,14 @@
+#!/usr/local/bin/perl -w
+
+use strict;
+use VCP::Debug qw( :debug );
+BEGIN { enable_debug ".*"; }
+
+use VCP::RevMapDB;
+
+my $db = VCP::RevMapDB->new( @ARGV ? ( StoreLoc => shift ) : () );
+$db->open_existing_db;
+$db->dump( \*STDOUT );
+$db->close_db;
+
+

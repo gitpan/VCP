@@ -18,13 +18,46 @@ mostly wrappers for calling the vss command.
 use strict ;
 
 use Carp ;
-use VCP::Debug qw( debug debugging ) ;
 use File::Spec ;
 use File::Temp qw( mktemp ) ;
-use POSIX ':sys_wait_h' ;
-use Regexp::Shellish qw( compile_shellish );
+use VCP::Debug qw( :debug ) ;
+use VCP::Logger qw( lg pr_doing pr_done pr_done_failed );
+use VCP::Utils qw( empty start_dir ) ;
 
 =head1 METHODS
+
+=item ssdir
+
+The location of the VSS database, if set in either the SSDIR environment
+variable or in the source or destination specification.
+
+=cut
+
+sub ssdir {
+   my $self = shift;
+
+   defined $self->repo_server
+      ? File::Spec->rel2abs(
+          $self->repo_server,
+          start_dir
+      )
+      : $ENV{SSDIR};
+}
+
+=item ssuser
+
+The location of the VSS database, if set in either the SSUSER environment
+variable or in the source or destination specification.
+
+=cut
+
+sub ssuser {
+   my $self = shift;
+
+   defined $self->repo_user
+      ? $self->repo_user
+      : $ENV{SSUSER};
+}
 
 =item ss
 
@@ -40,22 +73,139 @@ sub ss {
 
    my $args = shift ;
 
+   my $cmd = shift @$args;
+
    my $user = $self->repo_user;
    my @Y_arg;
-   push @Y_arg, "-Y$user" if defined $user and length $user;
+   push @Y_arg, "-Y$user" unless empty $user;
 
    local $ENV{SSPWD} = $self->repo_password if defined $self->repo_password;
-
+   local $ENV{SSDIR} = $self->ssdir         if defined $self->repo_server;
+   lg "SSDIR=$ENV{SSDIR}";
    my @I_arg;
 
    push @I_arg, "-I-" unless grep /^-I/, @$args;
 
-   $self->run_safely(
-      [ qw( ss ), @$args, @Y_arg, @I_arg ], @_
-   ) ;
+   my @O_arg;
+
+   ## Forcing VSS to emit to a file with its -O@foo.txt syntax
+   ## prevents it from wrapping at 80 cols.  Sigh.
+   my ( $out_ref, $out_fn );
+   ## ss ignored -O@ on help command
+   if ( $#_ >= 1 && $_[1] && ref $_[1]
+      && lc $cmd ne "help"
+    ) {
+      $out_fn = mktemp(
+         File::Spec->catfile( File::Spec->tmpdir, "vcp_vss_XXXX" )
+      );
+      $out_ref = $_[1];
+      $_[1] = undef;
+      @O_arg = ( "-O\@$out_fn" );
+   }
+
+   my $retrying;
+
+RETRY:
+
+   my $ok = eval {
+      $self->run_safely(
+         [ "ss", $cmd, @$args, @Y_arg, @I_arg, @O_arg ], @_
+      ) ;
+      1;
+   };
+
+   if ( !$ok ) {
+      if ( ! $retrying && $@ eq "UNDOCHECKOUT\n" ) {
+         $self->run_safely(
+            [
+               "ss", "UndoCheckout", $args->[0], @Y_arg, "-I-Y", "-G-"
+            ],
+            {
+               stderr_filter => qr{
+                  ^(?:
+                     \$/.*
+                     |File.*not\sfound.*
+                     |Continue.*
+                     |.*has\schanged.*
+                  )\r?\n
+               }xm,
+            }
+         );
+         $retrying = 1;
+         goto RETRY;
+      }
+      else {
+         die $@;
+      }
+   }
+
+   if ( $out_ref ) {
+      local *F;
+      open F, "<$out_fn" or die "$!: $out_fn for SS.EXE stdout\n";
+      if ( ref $out_ref eq "SCALAR" ) {
+         $$out_ref = join "", <F>;
+      }
+      else {
+         $out_ref->( \*F );
+      }
+      close F;
+      unlink $out_fn or warn "$! deletign '$out_fn'\n";
+   }
 
    return;
 }
+
+=item throw_undocheckout_and_retry
+
+This is called from the stderr_filter for SS.EXE commands that 
+emit a "File ... is checked out by ..." message so that VCP can
+issue an undocheckout command and retry, like the Recover command.
+
+=cut
+
+sub throw_undocheckout_and_retry {
+   my $self = shift;
+   die "UNDOCHECKOUT\n";
+}
+
+=item ss_cp
+
+    $self->ss_cp( $project );
+
+Changes to a new current project, does not change projects if this is
+the current project.
+
+=cut
+
+sub ss_cp {
+   my $self = shift;
+   my ( $new_project ) = @_;
+
+   return
+      if defined $self->{VSS_CURRENT_PROJECT}
+         && $new_project eq $self->{VSS_CURRENT_PROJECT};
+   $self->ss( [ "cp", "\$/$new_project" ] );
+   $self->{VSS_CURRENT_PROJECT} = $new_project;
+}
+
+
+=item parse_vss_repo_spec
+
+parse repo_spec by calling parse_repo_spec, then
+set the repo_id.
+
+=cut
+
+sub parse_vss_repo_spec {
+   my $self = shift ;
+   my ( $spec ) = @_ ;
+
+   $self->parse_repo_spec( $spec ) ;
+
+   $self->repo_id( "vss:" . $self->repo_server );
+};
+
+
 
 =item create_vss_workspace
 
@@ -65,8 +215,6 @@ Creates a temporary directory.
 
 sub create_vss_workspace {
    my $self = shift ;
-
-   confess "Can't create_workspace twice" unless $self->none_seen ;
 
    ## establish_workspace in a directory named "co" for "checkout". This is
    ## so that VCP::Source::vss can use a different directory to contain
@@ -91,19 +239,20 @@ sub _scan_for_files {
 
    $path = $self->repo_filespec
       unless defined $path;
-   $path =~ s{^\$[\\/]}{};
+   $path =~ s{^\$?[\\/]*}{/};
 
-   my $path_re = compile_shellish( $path );
+   my $path_re = $self->compile_path_re( $path );
 
-   debug "vcp: file scan re: $path_re" if debugging $self ;
+   debug "file scan re: $path_re" if debugging ;
    my $cur_project;
    for ( @$filelist ) {
+      pr_doing;
       if ( /^(|No items found.*|\d+ item.*s.*)$/i ) {
          undef $cur_project;
          next;
       }
 
-      if ( m{^\$/(.*):} ) {
+      if ( m{^\$(\/.*):} ) {
          $cur_project = $1;
          ## Catch all project entries, because we may be importing
          ## to a non-existant project inside a project that exists.
@@ -114,7 +263,11 @@ sub _scan_for_files {
 #               ## Catch all parent projects.  This prevents us from
 #               ## creating more than need be.
 #               do {
-                  $self->{VSS_FILES}->{$p} = "project";
+               my @state = $self->files->get( [ $p ] );
+               $self->files->set( [ $p ], @state, "project" )
+                  if ! grep $_ eq "project", @state;
+                   
+#                  $self->{VSS_FILES}->{$p} = "project";
 #               } while $p =~ s{/[^/]*}{} && length $p;
 #            }
             $cur_project .= "/";
@@ -124,21 +277,24 @@ sub _scan_for_files {
 
       if ( m{^\$(.*)} ) {
          confess "undefined \$cur_project" unless defined $cur_project;
-         ## A subproject.  note here for the fun of it; it should also
+         ## A subproject.  note here for completeness' sake; it should also
          ## occur later in a $/foo: section of it's own.
-         my $pjt = "$cur_project$1";
-         $self->{VSS_FILES}->{$pjt} = "project"
-             if $pjt =~ $path_re;
+         my $p = "$cur_project$1";
+         if ( $p =~ $path_re ) {
+            my @state = $self->files->get( [ $p ] );
+            $self->files->set( [ $p ], @state, "project" )
+               if ! grep $_ eq "project", @state;
+         }
          next;
       }
 
       if ( "$cur_project$_" =~ $path_re ) {
-         if ( defined $self->{VSS_FILES}->{"$cur_project$_"} ) {
-            $self->{VSS_FILES}->{"$cur_project$_"} .= ", $type";
-         }
-         else {
-            $self->{VSS_FILES}->{"$cur_project$_"} = $type;
-         }
+         my $p = "$cur_project$_";
+         my @state = $self->files->get( [ $p ] );
+         ## In VSS, a file may be both deleted and not deleted.  So
+         ## we always append the type to a list of types for files.
+         $self->files->set( [ $p ], @state, $type )
+            if ! grep $_ eq $type, @state;
          next;
       }
    }
@@ -156,30 +312,27 @@ sub get_vss_file_list {
    ## This does have the advantage that we can use full wildcards in
    ## $path.
 
-   $self->{VSS_FILES} = {};
+   $self->ss_cp( "" );
 
-   my $ignored_stdout;
-   $self->ss( [ "cp", "\$/" ], \$ignored_stdout );
+   pr_doing "scanning VSS for files '$path': ";
 
    $self->_scan_for_files( $path, "file",
       [ do {
          my $filelist;
-         $self->ss( [qw( Dir -R )], ">", \$filelist );
-         map { chomp; $_ } split /^/m, $filelist;
+         $self->ss( [qw( Dir -R )], undef, \$filelist );
+         map { s/[\r\n]//g; $_ } split /^/m, $filelist;
       } ]
    );
 
-   $self->_scan_for_files( $path, "deleted file",
+   $self->_scan_for_files( $path, "deleted",
       [ do {
          my $filelist;
-         $self->ss( [qw( Dir -R -D)], ">", \$filelist );
-         map { chomp; $_ } split /^/m, $filelist;
+         $self->ss( [qw( Dir -R -D)], undef, \$filelist );
+         map { s/[\r\n]//g; $_ } split /^/m, $filelist;
       } ]
    );
-   if ( debugging $self ) {
-      require Data::Dumper;\
-      debug Data::Dumper::Dumper( $self->{VSS_FILES} );
-   }
+
+   pr_done "found " . $self->vss_files, " files";
 }
 
 =item vss_files
@@ -196,29 +349,20 @@ sub vss_files {
 
    ## TODO: allow a pattern.  This would let us handle filespecs like
    ## /a*/b*
-   grep index( $self->{VSS_FILES}->{$_}, "project" ) < 0,
-      keys %{$self->{VSS_FILES}};
+   map $_->[0],
+      grep 
+         grep( $_ ne "project", $self->files->get( $_ ) ),
+         $self->files->keys;
 }
 
-=item vss_file
-
-    $self->vss_file( $path );
-    $self->vss_file( $path, undef );      ## To mark as non-existant
-    $self->vss_file( $path, 1 );          ## To mark as existant
-    $self->vss_file( $path, "project" );  ## To mark as being a project
-
-Accepts an absolute path with or without the leading C<$/> or C</> and
-returns TRUE if it exists in CVS.
-
-=cut
-
+## TODO: DEPRECATED.  delete this sub once it's not needed by VCP::Source::vss.
 sub vss_file {
    my $self = shift;
    my ( $path, $value ) = @_;
 
-   confess unless defined $path;
+warn caller;
 
-   $self->get_vss_file_list unless $self->{VSS_FILES};
+   confess unless defined $path;
 
    for ( $path ) {
       s{\\}{/}g;
@@ -252,7 +396,8 @@ Thanks to Dave Foglesong for pointing this out.
 =cut
 
 sub vss_file_is_deleted {
-    return 0 <= index shift->vss_file( @_ ), "deleted";
+   my $self = shift;
+   return grep $_ eq "deleted", $self->files->get( [ @_ ] );
 }
 
 =item vss_file_is_active
@@ -265,7 +410,8 @@ Thanks to Dave Foglesong for pointing this out.
 =cut
 
 sub vss_file_is_active {
-    return shift->vss_file( @_ ) =~ /(^|, )file/;
+   my $self = shift;
+   return grep $_ ne "deleted", $self->files->get( [ @_ ] );
 }
 
 =head1 COPYRIGHT

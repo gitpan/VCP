@@ -1,0 +1,98 @@
+=head1 NAME
+
+genhelp - Build vcp_html/... by extracting POD from the listed files
+
+=head1 SYNOPSYS
+
+    genhtml lib/VCP.pm lib/VCP/Foo.pm ...
+
+=head1
+
+When bundling libraries and POD files with PAR <= 0.79, it is difficult
+to find and parse the files to generate html with.  So we extract it
+and build it as an HTML directory.
+
+See Makefile.PL for how this tool is automated.
+
+=cut
+
+use strict;
+
+my $prog_name = "vcp";
+my $dest_dir;
+
+unless ( defined $dest_dir && length $dest_dir ) {
+   $dest_dir = $prog_name . "_html";
+}
+
+use File::Spec;
+$dest_dir = File::Spec->rel2abs( $dest_dir );
+
+$| = 1;
+warn "Generating HTML in $dest_dir/";
+
+use Cwd;
+my $start_dir = cwd;
+
+use Pod::Links;
+use Pod::HTML_Elements;
+use File::Path;
+use IO::File;
+
+## BEGIN CODE ADAPTED FROM NICK ING-SIMMONS' PodToHTML package
+my $links = Pod::Links->new();
+for my $fn ( @ARGV ) {
+   print ".";
+   $links->parse_from_file($fn);
+}
+
+for my $name ($links->names) {
+   $links->link(
+      $name,
+      do {
+         my $outfile = $name;
+         $outfile =~ s#::#/#g;
+         $outfile =~ s#[^/a-z0-9A-Z._-]#_#g;
+         $outfile .= ".html";
+#File::Spec->catfile( $dest_dir, $outfile );
+         $outfile;
+      }
+   ) if $links->pod($name);
+}
+
+my $index_file = File::Spec->catfile( $dest_dir, "index.html" );
+
+my $parser = Pod::HTML_Elements->new(
+   Index => $index_file,
+   Links => $links,
+);
+
+## the sort {} makes sure "vcp" is listed first in the
+## resulting index.
+mkdir $dest_dir;
+chdir $dest_dir or die "$!: $dest_dir";
+
+for my $name (
+   sort {
+      $a eq "vcp"
+         ? -1
+         : $b eq "vcp"
+            ? 1
+            : $a cmp $b
+   } $links->names
+) {
+   print ".";
+   my $file = File::Spec->rel2abs( $links->pod($name), $start_dir );
+   my $outfile = $links->link($name);
+   if (defined $file) {
+      File::Path::mkpath( File::Basename::dirname( $outfile ), 0, 0755 );
+      $parser->parse_from_file( $file, $outfile );
+   }
+}
+
+$parser->write_index;
+## END CODE ADAPTED FROM NICK ING-SIMMONS' PodToHTML package
+print "\n";
+
+print "Finished, index file is $index_file\n";
+

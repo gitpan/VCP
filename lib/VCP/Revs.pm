@@ -22,35 +22,50 @@ $VERSION = 1 ;
 
 use strict ;
 
-use Carp ;
+use VCP::Logger qw( BUG );
 use VCP::Debug ":debug" ;
+use VCP::DB_File::big_records;
 use VCP::Rev ;
-
-use fields (
-   'REVS',        ## The revs, sorted or not
-   'SEEN',        ## A HASH of keys of form "filename,rev#"
-) ;
-
+use VCP::Utils qw( empty );
 
 =item new
 
 =cut
 
 sub new {
-   my $class = CORE::shift ;
-   $class = ref $class || $class ;
+   my $class = shift;
+   my $self = bless { @_ }, $class;
 
-   my $self ;
-
-   {
-      no strict 'refs' ;
-      $self = bless [ \%{"$class\::FIELDS"} ], $class ;
-   }
-
-   $self->{REVS} = [] ;
-   $self->{SEEN} = {} ;
+   BUG "STORE_LOC not set" if empty $self->{STORE_LOC};
 
    return $self ;
+}
+
+
+sub revs_db {
+   my $self = shift;
+
+   my $plugin_name = $self->{PLUGIN_NAME};
+   $plugin_name = "" unless defined $plugin_name;
+   $plugin_name =~ s/::/-/g;
+   return $self->{REVS_DB} ||= do {
+      my $db = VCP::DB_File::big_records->new(
+         StoreLoc  => $self->{STORE_LOC},
+         TableName => "$plugin_name-revs",
+      );
+      $db->delete_db;
+      $db->open_db;
+      $db;
+   };
+}
+
+
+sub DESTROY {
+   my $self = shift;
+   if ( $self->{REVS_DB} ) {
+      $self->{REVS_DB}->close_db;
+      $self->{REVS_DB}->delete_db;
+   }
 }
 
 
@@ -61,112 +76,92 @@ sub new {
 
 Adds a revision or revisions to the collection.
 
+The ( name, rev_id, branch_id ) tuple must be unique, if a second rev
+is C<add()>ed with the same values, an exception is thrown.
+
 =cut
 
-sub add {
-   my VCP::Revs $self = CORE::shift ;
+sub added_rev {
+   my $self = CORE::shift ;
+   my ( $id ) = @_;
+   return $self->revs_db->exists( [ $id ] );
+}
 
-   if ( debugging $self || debugging scalar caller ) {
-      debug( "vcp: queuing ", $_->as_string ) for @_ ;
+
+sub add {
+   my $self = CORE::shift ;
+
+   Carp::confess "undef passed" if grep ! defined, @_;
+
+   if ( debugging ) {
+      debug "queuing ", $_->as_string for @_ ;
    }
 
    for my $r ( @_ ) {
-      my $key = $r->name . "#" . $r->rev_id ;
-      croak "Can't add same revision twice: '" . $r->as_string
-         if $self->{SEEN}->{$key} ;
-      $self->{SEEN}->{$key} = 1 ;
-      push @{$self->{REVS}}, $r ;
+      my $id = $r->id;
+
+      BUG "can't add same revision twice: '" . $r->as_string
+         if $self->added_rev( $id );
+
+      $self->revs_db->set( [ $id ], $r->serialize );
    }
 }
 
 
-=item set
+=item exists 
 
-   $revs->set( $rev ) ;
-   $revs->set( $rev1, $rev2, ... ) ;
-
-Sets the list of revs.
+   if ( $revs->exists( $id ) ) { ... }
 
 =cut
 
-sub set {
-   my VCP::Revs $self = CORE::shift ;
-
-   Carp::confess "undef passed" if grep !defined, @_;
-
-   if ( debugging $self || debugging scalar caller ) {
-      require UNIVERSAL;
-      Carp::confess "unblessed ref passed" if grep !UNIVERSAL::can( $_, "as_string" ), @_;
-      debug( "vcp: queuing ", $_->as_string ) for @_ ;
-   }
-
-   @{$self->{REVS}} = @_ ;
+sub exists {
+   my $self = CORE::shift ;
+   return $self->revs_db->exists( [ @_ ] );
 }
 
 
 =item get
 
-   @revs = $revs->get ;
-
-Gets the list of revs.
+   $rev = $revs->get( $id ) ;  ## return the rev with a given ID (or die())
 
 =cut
 
 sub get {
-   my VCP::Revs $self = CORE::shift ;
+   my $self = CORE::shift ;
 
-   return @{$self->{REVS}} ;
+   BUG "can't retrieve all revs at once any more" unless @_;
+
+   my @fields = $self->revs_db->get( [ @_ ] );
+
+   return undef unless @fields;
+
+   return VCP::Rev->deserialize( @fields );
 }
 
 
-=item sort
+=item foreach
 
-   # Using a custom sort function:
-   $revs->sort( sub { ... } ) ;
+   $revs->foreach( sub { ... } );
 
-Note: Don't use $a and $b in your sort function.  They're package globals
-and that's not your package.  See L<VCP::Dest/rev_cmp_sub> for more details.
+Apply a subroutine to each revision.
 
 =cut
 
-sub sort {
-   my VCP::Revs $self = CORE::shift ;
+sub foreach {
+   my $self = shift;
 
-   my ( $sort_func ) = @_ ;
+   my ( $sub ) = @_;
 
-   @{$self->{REVS}} = sort $sort_func, @{$self->{REVS}} ;
+   $self->revs_db->foreach_record_do(
+      sub {
+         my $r = VCP::Rev->deserialize( @_ );
+         $sub->( $r );
+      }
+   );
 }
 
 
-=item shift
-
-   while ( $r = $revs->shift ) {
-      ...
-   }
-
-Call L</sort> before calling this :-).
-
-=cut
-
-sub shift {
-   my VCP::Revs $self = CORE::shift ;
-
-   return shift @{$self->{REVS}} ;
-}
-
-
-=item as_array_ref
-
-Returns an ARRAY ref of all revs.
-
-=cut
-
-sub as_array_ref {
-   my VCP::Revs $self = CORE::shift ;
-
-   return $self->{REVS} ;
-}
-
+=back
 
 =head1 SUBCLASSING
 

@@ -6,29 +6,31 @@ gentrevml - Generate a .revml file used by the t/ scripts
 
 =head2 SYNOPSIS
 
-   perl bin/gentrevml --(revml|p4|cvs|vss) [--bootstrap] [--batch=1]
+   perl bin/gentrevml --(revml|p4|cvs|vss) [--bootstrap] [--no-a-big-file] [--batch=1]
 
 =head2 DESCRIPTION
 
-The test suite uses a bas RevML file to check to see vcp it can copy in to
-and out of a repository correctly.  This is done for each repository class.
+The test suite uses a basic RevML file to check to see vcp it can copy
+in to and out of a repository correctly.  This is done for each
+repository class.
 
 Note that going through a repository may lose some information, so the
 test suite can't always compare the input RevML to the output RevML.
 
 Only the revml->revml case is known to be idempotent.
 
-I chose to do this over using some base repository because not every user
-is going to happen to have that repository, and (2) not every repository
-will pass through all information correctly.
+I chose to do this over using some base repository because not every
+user is going to happen to have that repository, and (2) not every
+repository will pass through all information correctly.
 
 =head2 COPYRIGHT
 
-Copyright 2000, Perforce Software, Inc.  All Rights Reserved.
+Copyright 2000, 2003 Perforce Software, Inc.  All Rights Reserved.
 
-This will be licensed under a suitable license at a future date.  Until
-then, you may only use this for evaluation purposes.  Besides which, it's
-in an early alpha state, so you shouldn't depend on it anyway.
+This will be licensed under a suitable license at a future date.
+Until then, you may only use this for evaluation purposes.  Besides
+which, it's in an early alpha state, so you shouldn't depend on it
+anyway.
 
 =head2 AUTHOR
 
@@ -36,7 +38,13 @@ Barrie Slaymaker <barries@slaysys.com>
 
 =cut
 
+# NOTE: The keys this program uses are slightly different than
+# VCP::Rev's uids and ->as_string output:  the branch_id is always
+# surrounded by "()" here, even if it is "".  There, the "()" is omitted
+# for the sake of readability if the branch_id is undef or has no length
+
 use Text::Diff ;
+use File::Basename ;
 use VCP::DiffFormat ;
 use Getopt::Long ;
 use MIME::Base64 ;
@@ -53,6 +61,7 @@ sub which {
 
 my $batch ;
 my $bootstrap ;
+my $no_big_files ;
 
 BEGIN {
    ## Need to know how to name the output file before we can
@@ -61,13 +70,14 @@ BEGIN {
    Getopt::Long::Configure( qw( no_auto_abbrev no_getopt_compat ) ) ;
    unless (
       GetOptions(
-	 'p4'           => \&which,
-	 'cvs'          => \&which,
-	 'revml'        => \&which,
-	 'vss'          => \&which,
-	 'b|bootstrap'  => \$bootstrap,
-	 'batch=i'      => \$batch,
-	 'd|debug'      => \$debug,
+	 "p4"           => \&which,
+	 "cvs"          => \&which,
+	 "revml"        => \&which,
+	 "vss"          => \&which,
+	 "b|bootstrap"  => \$bootstrap,
+	 "batch=i"      => \$batch,
+	 "d|debug"      => \$debug,
+         "no-big-files" => \$no_big_files,
       )
       && $which
    ) {
@@ -76,6 +86,8 @@ BEGIN {
    }
 }
 
+$bootstrap = 0 unless $batch;  ## Just in case
+
 if ( $debug ) {
    print STDERR "for $which\n" ;
    print STDERR "bootstrap mode ", $bootstrap ? "on" : "off", "\n" ;
@@ -83,14 +95,28 @@ if ( $debug ) {
    print STDERR "\n" ;
 }
 
+## Note the overlapping range here.  Batch 1 (0 or 1) needs to have a digest
+## of the rev _before_ the start of the batch unless it's in bootstrap mode.
+my @change_nums = (
+   ( ! $batch )
+      ? (1..3)
+   : $bootstrap
+      ? (4..6)
+      : (3..6)
+) ;
+
 ##
 ## BUILD  THE MANIFEST
 ##
+my $branch_mode = $which eq "p4" || $which eq "vss" ? "dir" : "rev";
+
 my @file_names ;
 ## Put @files in alpha order.  p4 likes to output in alpha order, and this
 ## makes comparing p4->revml output to revml->p4 input easier.
+
 for my $main (
-   qw( a/deeply/buried/file a_big_file add binary del readd ),
+   qw( a/deeply/buried/file add binary branched branched-no-change del readd ),
+   ! $no_big_files ? "a_big_file" : (),
 #   "spacey file name"
 ) {
    if ( $main eq "add" || $main eq "del" ) {
@@ -105,17 +131,35 @@ for my $main (
    }
 }
 
+my $prefix = $branch_mode eq "dir" ? "main/" : "";
+@file_names = map "$prefix$_", @file_names;
+
+# rev_root is so far ignored in the test suite since most
+# commands specify a destination directory.  This value is chosen
+# to make that obvious.
+my $rev_root = "/ignored";
 
 ##
 ## BUILD REVISIONS IN MEMORY
 ##
-my @changes ;
-
-my $binary_counter = 0 ;
+my @revs;
+my @changes;
+my %versions;
 
 {
-   my $user_id = "${which}_t_user" ;
-   $user_id .= '@p4_t_client' if $which eq 'p4' ;
+   # We use $counter below to drive the insertion of a range of characters
+   # and labels.  This is based on the file name, the branch_id, and
+   # the change number in order to yield consistent numbering between
+   # the various .revml files.  the file name portion is a number representing
+   # the position of the file in @file_names.  This hash contains that
+   # mapping.
+   my %file_numbers = do {
+      my $i = 0;
+      map { ( $_ => $i++ ) } @file_names;
+   };
+
+   my $user_id = "test_user" ;
+#   $user_id .= '@p4_t_client' if $which eq 'p4' ;
 
    my %rev_num ;
 
@@ -123,15 +167,287 @@ my $binary_counter = 0 ;
    my %deleted_change_num = (
       ## Delete the 'del/f<x>' in change <x>
       ## except you can't delete anything in change 1, eh?
-      map( ( "del/f$_" => $_ ), (2..9) ),
+      map( ( "${prefix}del/f$_" => $_ ), (2..9) ),
    ) ;
+
+   if ( $which eq "vss" ) {
+      $deleted_change_num{"${prefix}readd"} = 2;
+   }
 
    my %created_change_num = (
       ## Add the 'add/f<x>' in change <x>
-      map( ( "add/f$_" => $_ ), (1..9) ),
+      map( ( "${prefix}add/f$_" => $_ ), (1..9) ),
    ) ;
 
-   my $counter = "00" ;
+   my %head_revs;
+
+   sub concoct_file_rev {
+      ## Create a revision for a branch of a file
+      my ( $rev_spec ) = @_;
+      my $abs_name   = $rev_spec->{abs_name};
+      my $name       = $rev_spec->{name};
+      my $branch_id  = $rev_spec->{branch_id};
+      my $change_num = $rev_spec->{change_num};
+      my $comment    = $rev_spec->{comment};
+      $comment = "comment '\"$change_num\n" unless defined $comment;
+      for ( $change_num % 5 ) {
+         $comment = "- $comment"  if $_ == 1;
+         $comment = "-- $comment" if $_ == 2;
+         $comment = "-$comment"   if $_ == 3;
+         $comment = "--$comment"  if $_ == 4;
+      }
+
+      ## Key for %rev_num and %head_revs
+      my $previous =
+         $head_revs{"$rev_spec->{base_abs_name}($rev_spec->{base_branch_id})"};
+
+      my $rev_num = $rev_spec->{is_branch} 
+         ? $which eq "vss"
+            ? do {
+               ## VSS branch creation (where we use placeholders) is a
+               ## numbered operation.  The child is branched at the
+               ## parent's rev number plus one.
+               my $prev_id = $previous->{rev_id};
+               $prev_id =~ s/^[0-9]+\.//;
+               $prev_id + 1;
+            }
+         : $which eq "p4"
+            ? 1
+            : 0
+         : ( $rev_num{"$name($branch_id)"} || 0 ) + 1;
+      $rev_num{"$name($branch_id)"} = $rev_num;
+      my $previous_id = defined $previous ? $previous->{id} : undef;
+
+      print STDERR "   $name#$rev_num:" if $debug ;
+
+      # This is arranged so that the counter value for a branch is
+      # before the counter value for the unbranched file in the
+      # same change number.  This is so that the branched files
+      # get committed after the previous change's files, but before
+      # the next change's unbranched files.
+      my $counter =
+         sprintf "%03d",
+            ( $change_num * keys( %file_numbers ) + $rev_spec->{file_number} ) * 2
+            + ( $rev_spec->{is_branched} ? 0 : 1 );
+
+      die "counter too big" if $counter > 254 ;
+
+      my $char_num = $counter + 1;
+
+      ## CVS on Win32 gets bummed out about ^Z in text files.
+      $char_num++ if $^O =~ /Win32/ && $char_num == 26;
+
+      my $is_binary = 0 <= index $name, "binary";
+
+      my $content = $is_binary
+        ? chr( $change_num & 0x07 ) x 100
+        : sprintf(
+            qq{%s@%d(%s) \\0x%02x="%s"},
+            do {
+               ## We don't want content differing based on
+               ## branch_mode because the test suite compares
+               ## output from one repository to the t/test-*.revml files
+               ## this script builds for another repository.
+               ( my $n = $name ) =~ s{^main[^/]*/}{}g;
+               $n;
+            },
+            $change_num,
+            $rev_spec->{branch_label},
+            $char_num,
+            chr( $char_num ),
+         ) ;
+
+      $content = "$content\n" x 200 if 0 <= index $name, "a_big_file" ;
+
+      $content .= "\n" unless $is_binary;
+
+      $content = $previous->{content} if $rev_spec->{no_change};
+
+      my $bin_char_count   = $content =~ tr/\x00-\x08\x0b-\x1f\x7f-\xff// ;
+      my $total_char_count = length $content;
+      my $legal_xml_char_count = $total_char_count - $bin_char_count;
+      
+      ## use the same heuristics VCP::Dest::revml uses, a testing nono,
+      ## but there's not necessarily a better way and this is ok for
+      ## regression tests.
+      my $encoding =
+            ( $legal_xml_char_count + $bin_char_count * 20 )
+               <= $total_char_count * 77/57
+         ? "none"
+         : "base64";
+
+      my $secs = $counter;
+      my $mins = int( $secs / 60 );
+      $secs -= $mins * 60;
+
+      my $r = {
+         name         => $name,
+         type         => $is_binary ? "binary" : "text",
+         encoding     => $encoding,
+         user_id      => $user_id,
+         branch_id    => $branch_id,
+         previous_id  => $previous_id,
+         content      => $content,
+         time         => sprintf( "2000-01-02 12:%02d:%02dZ", $mins, $secs ),
+         ## In p4, all files in a change number have an identical comment.
+         ## We impose this on the other solutions to test foo->p4 change
+         ## number aggregation.
+         comment      => $comment,
+      } ;
+
+      ## p4 doesn't handle modtime until very recently, and then it
+      ## doesn't expose it easily.
+      $r->{mod_time} = sprintf "2000-01-01 12:%02d:%02dZ", $mins, $secs
+         unless $which eq 'p4';
+
+      if ( $rev_spec->{is_branch} ) {
+         $r->{action} = "placeholder";
+         if ( $which eq "cvs" ) {
+            $r->{time}   = undef;
+            $r->{user_id} = "unknown_CVS_user";
+         }
+      }
+      elsif ( $rev_num eq 1 ) {
+         $r->{action} = 'add' ;
+      }
+      elsif ( 0 <= index $name, "readd" ) {
+         if ( $which eq "vss" ) {
+            $r->{action} =
+               $change_num == $deleted_change_num{$name}
+                  ? "delete"
+                  : "edit";
+
+            $rev_num{"$name($branch_id)"} = 0 if $r->{action} eq "delete";
+         }
+         else {
+            if ( $change_num % 2 ) {
+               ## Add it on the odd numbers
+               $r->{action} = 'add' ;
+            }
+            else {
+               $r->{action} = 'delete' ;
+            }
+         }
+      }
+      elsif ( defined $deleted_change_num{$name} 
+         && $change_num == $deleted_change_num{$name}
+      ) {
+         $r->{action} = 'delete' ;
+      }
+      else {
+         $r->{action} = 'edit' ;
+      }
+
+      if ( $which eq 'p4' ) {
+         $r->{p4_info}   = "Some info $which might emit about this file" ;
+         $r->{rev_id}    = $rev_num ;
+         ## In p4, you may have skipped some change numbers
+         $r->{change_id} = ( $r->{rev_id} - 1 ) * 2 + 1 ;
+         ## TODO: Delete this next line when we get VCP::Dest::p4 to sync
+         ## change numbers
+         $r->{change_id} = $change_num ;
+      }
+      elsif ( $which eq 'cvs' ) {
+         $r->{cvs_info}  = "Some info $which might emit about this file" ;
+         $r->{rev_id} = "1.$rev_num" ;
+         $r->{rev_id} = "1.1.2.$rev_num" if $rev_spec->{is_branched};
+         $r->{change_id} = $change_num ;
+      }
+      elsif ( $which eq 'revml' ) {
+         $r->{cvs_info}  ="Some info about this file" ;
+         $r->{rev_id}    = $rev_spec->{is_branched} ? "1.$rev_num" : $rev_num ;
+         $r->{change_id} = $change_num ;
+      }
+      elsif ( $which eq "vss" ) {
+         ## Source::vss has to fake rev numbered deletions with a
+         ## ".1" revision.
+         my $is_delete = $r->{action} eq "delete";
+
+         my $rev_id = $rev_num;
+
+         if ( exists $deleted_change_num{$name} 
+            && $change_num > $deleted_change_num{$name}
+         ) {
+            $rev_id = "1.$rev_id";
+         }
+         else {
+            $rev_id = "0.$rev_id";
+         }
+
+         $r->{user_id} = undef if $is_delete;
+
+         $r->{rev_id} = $rev_id;
+
+         ## change_id is provided to drive the "is_first" detection
+         ## below.
+         $r->{change_id} = $change_num ;
+
+         ## VSS does not allow comments on branch points
+         $r->{comment} = undef
+            if $r->{action} eq "placeholder";
+      }
+      else {
+         die "$which unhandled" ;
+      }
+
+      $r->{id} = "$abs_name#$r->{rev_id}";
+
+      if ( $which eq "cvs" ) {
+         ( my $branch_number = $r->{rev_id} ) =~ s/\.\d+\z//;
+         $branch_number = "" unless $branch_number =~ tr/.//;
+
+         ## Using branch number here instead of the $branch_id (which
+         ## may be a CVS branch tag so that altering the CVS source by
+         ## moving or changing or removing the branch's branch tag does
+         ## not result in different filebranch_ids.
+         $r->{source_filebranch_id} = "$abs_name<$branch_number>";
+      }
+      else {
+         $r->{source_filebranch_id} = $abs_name;
+      }
+
+      $r->{source_repo_id} = "$which:test_repository";
+
+      ## $counter normally jumps by two, it only gets incremented
+      ## by a 1 when there's a branch involved.  We don't want to
+      ## label *every* revision, so we label every other revision
+      ## (on average).  We don't label revisions that correspond
+      ## to "delete" actions, most, if not all, SCMs can't label
+      ## those.
+      unless (
+         $r->{action} eq 'delete'
+         || $counter & 2
+         || $rev_spec->{no_labels}
+      ) {
+         $r->{labels} = [
+             "achoo$counter",
+             "blessyou$counter",
+         ] ;
+         ## Label operations cause the version number to be
+         ## incremented in VSS.
+         $rev_num{"$name($branch_id)"} += 2
+            if $which eq "vss";
+      }
+
+      $counter = sprintf "%02d", $counter + 1 ;
+
+      push @{$changes[$change_num]}, $r ;
+      if ( $debug ) {
+         print STDERR " #$r->{rev_id}" ;
+         print STDERR " \@$r->{change_id}" if defined $r->{change_id} ;
+         print STDERR " ($r->{action})" ;
+         print STDERR " base: $r->{previous_id}" if defined $r->{previous_id};
+         print STDERR "\n" ;
+      }
+
+      $name =~ s/main-branch-[1-9]/main/
+         if $branch_mode eq "dir" && 0 < index $name, "branched";
+
+      $versions{$r->{id}} = $r;
+      $head_revs{"$abs_name($rev_spec->{branch_id})"        } = $r;
+
+      return $r;
+   }
 
    for my $change_num ( 1..6 ) {
       print STDERR "concocting \@$change_num:\n" if $debug ;
@@ -140,126 +456,102 @@ my $binary_counter = 0 ;
       ## all be the same time (the cvs commit sets the timestamp), and
       ## we want the revml that comes out to be in the same order
       ## as the revml that went in.
-      for my $name ( sort @file_names ) {
-	 next
-	    if (
-	       defined $created_change_num{$name}
-	       && $change_num < $created_change_num{$name} 
+
+      for my $master_name ( sort @file_names ) {
+	 next if (
+            (
+                  defined $created_change_num{$master_name}
+	       && $change_num < $created_change_num{$master_name} 
 	    )
 	    || (
-	       defined $deleted_change_num{$name}
-	    && $change_num > $deleted_change_num{$name}
-	    ) ;
+                  defined $deleted_change_num{$master_name}
+               && $change_num > $deleted_change_num{$master_name}
+               && ! ( $which eq "vss" && 0 <= index $master_name, "readd" )
+	    )
+        );
 
-	 ++$rev_num{$name} ;
+         my $main_branch_id = $branch_mode eq "dir"
+            ? (fileparse "$rev_root/$master_name")[1]
+            : "";
 
-	 print STDERR "   $name#$rev_num{$name}:" if $debug ;
+         my $main_abs_name = "$rev_root/$master_name";
 
-	 die "counter too big" if $counter > 254 ;
+         my %main_branch_rev = (
+            ## The file's revision for this change on the main branch
 
-	 my $char_num = $counter + 1;
+            branch_id      => $main_branch_id,
+            branch_label   => "",
+            abs_name       => $main_abs_name,
+            name           => $master_name,
+            change_num     => $change_num,
+            file_number    => $file_numbers{$master_name},
+            ## All main branch revs are based on their predecessors
+            base_abs_name  => $main_abs_name,
+            base_branch_id => $main_branch_id,
+         );
 
-	 ## CVS on Win32 gets bummed out about ^Z in text files.
-	 $char_num++ if $^O =~ /Win32/ && $char_num == 26;
+         my @rev_specs;
 
-	 my $content =  $name eq "binary" 
-	   ? chr( $binary_counter++ & 0x07 ) x 100
-	   : sprintf(
-	       qq{%s, revision %d, char 0x%02x="%s"\n},
-	       $name,
-	       $rev_num{$name},
-	       $char_num,
-	       chr( $char_num ),
-	    ) ;
+         ## The branched file branches in change 2
+         ## Do branched revs first because we want to make sure that in
+         ## change 2, say, the branched rev is based on change 1's version
+         ## not on change 2's non-branched version.  This is important
+         ## because the emission loop assumes that the last mainbranch
+         ## version is the base for the first branched version.
+         if ( ( 0 <= index $master_name, "branched" ) && $change_num >= 2 ) {
+            my $name = $master_name;
+            $name =~ s/main/main-branch-1/
+               if $branch_mode eq "dir";
 
-	 $content = $content x 200 if $name eq "a_big_file" ;
+            my $branch_abs_name = "$rev_root/$name";
 
-	 my $r = {
-	    name     => $name,
-	    type     => $name eq "binary" ? "binary" : "text",
-	    encoding => $name eq "binary" ? "base64" : "none",
-	    user_id  => $user_id,
-	    content  => $content,
-	    time     => "2000-01-01 12:00:${counter}Z",
-	    ## In p4, all files in a change number have an identical comment.
-	    ## We impose this on the other solutions to test foo->p4 change
-	    ## number aggregation.
-	    comment  => "comment $change_num\n",
-	 } ;
+            my $branch_id = $branch_mode eq "dir"
+               ? (fileparse "$rev_root/$name")[1]
+               : "main-branch-1";
 
-	 ## p4 doesn't handle modtime until very recently, and then it
-	 ## doesn't expose it easily.
-	 $r->{mod_time} = "2000-01-01 12:01:${counter}Z" unless $which eq 'p4' ;
+            my %branched_fields = (
+               %main_branch_rev,  ## copy most fields for the placeholder and
+                                  ## any branch revisions
+               abs_name       => $branch_abs_name,
+               name           => $name,
+               branch_id      => $branch_id,
+               branch_label   => "main-branch-1",
+               is_branched    => 1,
+            );
 
-	 if ( $which eq 'p4' ) {
-	    $r->{p4_info}   = "Some info $which might emit about this file" ;
-	    $r->{rev_id}    = $rev_num{$name} ;
-	    ## In p4, you may have skipped some change numbers
-	    $r->{change_id} = ( $r->{rev_id} - 1 ) * 2 + 1 ;
-	    ## TODO: Delete this next line when we get VCP::Dest::p4 to sync
-	    ## change numbers
-	    $r->{change_id} = $change_num ;
-	 }
-	 elsif ( $which eq 'cvs' ) {
-	    $r->{cvs_info}  = "Some info $which might emit about this file" ;
-	    $r->{rev_id} = "1.$rev_num{$name}" ;
-	    # We provide a change ID to see if the label makes it in and
-	    # so that the label can be used to test incremental exports from
-	    # cvs.
-	    $r->{change_id} = $change_num ;
-	 }
-	 elsif ( $which eq 'revml' ) {
-	    $r->{cvs_info}  ="Some info about this file" ;
-	    $r->{rev_id}    = $rev_num{$name} ;
-	    $r->{change_id} = $change_num ;
-	 }
-	 elsif ( $which eq 'vss' ) {
-	    $r->{rev_id}    = $rev_num{$name} ;
-            ## change_id is provided to drive the "is_first" detection
-            ## below and so that extraction of incremental exports can
-            ## use the ch_4 label.
-	    $r->{change_id} = $change_num ;
-	 }
-	 else {
-	    die "$which unhandled" ;
-	 }
+            if ( $change_num == 2 ) {
+               ## The placeholder rev is based on the parent branch,
+               ## All later branched revs are based on their predecessors
 
-	 if (  defined $deleted_change_num{$name} 
-	    && $change_num == $deleted_change_num{$name}
-	 ) {
-	    $r->{action} = 'delete' ;
-	 }
-	 elsif ( $rev_num{$name} eq 1 ) {
-	    $r->{action} = 'add' ;
-	 }
-	 elsif ( $name eq "readd" ) {
-	     if ( $change_num % 2 ) {
-	         ## Add it on the odd numbers
-		 $r->{action} = 'add' ;
-	     }
-	     else {
-	         $r->{action} = 'delete' ;
-	     }
-	 }
-	 else {
-	    $r->{action} = 'edit' ;
-	 }
+               push @rev_specs, {
+                  ## A placeholder revision 
+                  %branched_fields,
+                  is_branch      => 1,
+                  no_change      => 1,
+                  no_labels      => 1,
+                     ## We turn on no_labels because CVS can't
+                     ## store labels on a branched file that has
+                     ## not been changed because there is no rev
+                     ## to label.  I think (TODO: double check).
+                  base_abs_name  => $main_abs_name,
+                  base_branch_id => $main_branch_id,
+                  $which eq "cvs"
+                     ? (
+                        comment => "[vcp] create branch '$branch_id'",
+                     )
+                     : (),
+               };
+            }
+            elsif ( ! ( 0 <= index $master_name, "no-change" ) ) {
+               push @rev_specs, {
+                  %branched_fields,
+                  base_abs_name  => $branch_abs_name,
+                  base_branch_id => $branch_id,
+               };
+            }
+         }
 
-	 unless ( $r->{action} eq 'delete' || $counter % 2 ) {
-	    $r->{labels} = [
-		"achoo$counter",
-		"blessyou$counter",
-	    ] ;
-	 }
-
-	 $counter = sprintf "%02d", $counter + 1 ;
-
-	 push @{$changes[$change_num]}, $r ;
-	 if ( $debug ) {
-	    print STDERR " #$r->{rev_id}" ;
-	    print STDERR " \@$r->{change_id})" if defined $r->{change_id} ;
-	    print STDERR " ($r->{action})\n" ;
-	 }
+         push @revs, map concoct_file_rev( $_ ), @rev_specs, \%main_branch_rev;
       }
       print STDERR "\n" if $debug ;
    }
@@ -305,37 +597,43 @@ xmlDecl ;
 time '2000-01-01 00:00:00Z' ;
 rep_type $which ;
 rep_desc 'random text, for now' ;
+if ( $which eq "revml" ) {
+   ## These are ignored by other interfaces, so don't test with them.
+   comment "A comment" ;
+}
 
-my %prev ;
+rev_root $rev_root;
 
-## TODO: Branching, moving, and binary files
+# The name "main-branch-1" is used to make sure that these revs
+# occur after the main/ branch revs.  This is because we sort the
+# revml file by name and (currently) VCP::Source::revml assumes that
+# the previous rev is always there before the current rev.
 
-# This is a bogus rev_root, we set it to see if it gets ignored on
-# transfers with a destination rev_root specified on the command line.
-# TODO: We should also see what happens when dest no rev_root is specified.
-rev_root "foo/bar/bah" ;
-
-## Note the overlapping range here.  Batch 1 (0 or 1) needs to have a digest
-## of the rev _before_ the start of the batch unless it's in bootstrap mode.
-my @change_nums = (
-   ( ! $batch )
-      ? (1..3)
-   : $bootstrap
-      ? (4..6)
-      : (3..6)
-) ;
+my %revs_by_name;
 
 ## Build @files from @changes.  An older version built revml in change number
 ## order, but we now built in filename, change number order to make sorting
 ## of the output of vcp tests in to a predictable order possible.  This is
-## because cvs->revml does not result in predictable revml order, so
-## all the tests generate revml in name,rev order.
-my %revs_by_name ;
-
-for my $change_num ( @change_nums ) {
-   for my $rev ( @{$changes[$change_num]} ) {
-      push @{$revs_by_name{$rev->{name}}}, $rev ;
-   }
+## because cvs->revml does not result in predictable revml order due to
+## cvs oddities, so all the tests generate revml in name,rev order.
+for my $r ( sort {
+      $a->{name} cmp $b->{name}
+      || do {
+         my @a = split /\D+/, $a->{rev_id};
+         my @b = split /\D+/, $b->{rev_id};
+         my $result;
+         while ( @a && @b ) {
+            $result = shift( @a ) <=> shift( @b ) ;
+            last if $result ;
+         }
+         $result || @a <=> @b;
+      }
+   } grep {
+      my $r = $_;
+      grep( $_ eq $r->{change_id}, @change_nums )
+   } @revs
+) {
+   push @{$revs_by_name{$r->{name}}}, $r;
 }
 
 my @sorted_rev_names = sort {
@@ -348,61 +646,105 @@ my @sorted_rev_names = sort {
    return @a <=> @b ;
 } keys %revs_by_name ;
 
+
 for my $rev_name ( @sorted_rev_names ) {
    print STDERR "emitting $rev_name:\n" if $debug ;
 
    for my $r ( @{$revs_by_name{$rev_name}} ) {
       my $change_num = $r->{change_id} ;
       my $is_first = $change_num eq $change_nums[0] ;
-      my $digest_mode = $is_first && $batch && ! $bootstrap ;
+      my $digest_mode  = $is_first && $batch && ! $bootstrap ;
+      my $is_bootstrap = $is_first && ( ! $batch || $bootstrap );
 
       next if ( $is_first
 	 && ( ! $batch || $digest_mode )
 	 && $r->{action} eq 'delete'
       ) ;
 
-      next if ( $which eq "vss"
-	 && $r->{action} eq "delete"
-         && $r->{name} eq "readd"
-         && $change_num != $change_nums[-1]
-      );
-
       print STDERR "   $r->{name}#$r->{rev_id}:" if $debug ;
 
-      my $pr = $prev{$r->{name}} ;
+      my $pr;
 
-      start_rev ;
-      name        $r->{name} ;
-      type        $r->{type} unless $which eq "vss" && $r->{action} eq "delete";
+      if ( $r->{previous_id} ) {
+         $pr = $versions{$r->{previous_id}};
+         $pr = $versions{$pr->{previous_id}}
+            if $pr->{action} eq "placeholder"
+               && $which ne "vss";
 
-      if ( ! $digest_mode ) {
-	 p4_info     $r->{p4_info}  if defined $r->{p4_info} ;
-	 cvs_info    $r->{cvs_info} if defined $r->{cvs_info} ;
+         die "No previous rev found for $r->{name}($r->{branch_id})#$r->{rev_id}",
+            ": key '$r->{previous_id}', does not exist in ",
+            join " ", map "'$_'", sort keys %versions
+            unless $pr;
       }
 
-      rev_id      $r->{rev_id};
-      change_id   $r->{change_id}
-         if defined $r->{change_id};# && $which ne "vss" ;
+      start_rev id => $r->{id};
+      name                 $r->{name} ;
+      source_name          $r->{name} ;
+
+      source_filebranch_id $r->{source_filebranch_id};
+      source_repo_id       $r->{source_repo_id};
+
+      ## There are a number of data fields that are simply not
+      ## tracked by VSS.
+      if ( $r->{action} ne "placeholder" ) {
+         type                 $r->{type}
+            unless $which eq "vss" && $r->{action} eq "delete";
+
+         if ( ! $digest_mode ) {
+            p4_info           $r->{p4_info}  if defined $r->{p4_info} ;
+            cvs_info          $r->{cvs_info} if defined $r->{cvs_info} ;
+         }
+      }
+
+      if( length $r->{branch_id} ) {
+         branch_id        $r->{branch_id};
+         source_branch_id $r->{branch_id};
+      }
+
+      rev_id              $r->{rev_id};
+      source_rev_id       $r->{rev_id};
+
+      if( defined $r->{change_id} ) { # && $which ne "vss" ;
+         change_id        $r->{change_id};
+         source_change_id $r->{change_id};
+      }
 
       my $digestion = 1 ;
 
-      if ( $digest_mode ) {
+      if ( $r->{action} eq "placeholder" ) {
+	 time      $r->{time}
+            if defined $r->{time}
+                && ! ( $which eq "vss" && $r->{action} eq "delete" );
+	 user_id   $r->{user_id} if defined $r->{user_id};
+	 comment $r->{comment}
+            if defined $r->{comment}
+               && ! ( $which eq "vss" && $r->{action} eq "delete" );
+         previous_id $r->{previous_id}
+            if defined $r->{previous_id};# && ! $is_bootstrap;
+         placeholder;
+         $digestion = 0;
+      }
+      elsif ( $digest_mode ) {
 	 print STDERR " digest" if $debug ;
       }
       else {
-	 time      $r->{time} unless $which eq "vss" && $r->{action} eq "delete";
+	 time      $r->{time}
+            unless $which eq "vss" && $r->{action} eq "delete";
 	 mod_time  $r->{mod_time}
             if defined $r->{mod_time}
                && ! ( $which eq "vss" && $r->{action} eq "delete" );
 
-	 user_id   $r->{user_id} unless $which eq "vss" && $r->{action} eq "delete";
+	 user_id   $r->{user_id} if defined $r->{user_id};
 
          if ( $r->{labels} ) {
 	    label $_ for @{$r->{labels}} ;
 	 }
 
-	 ## In p4, all files in a change number have an identical comment.
-	 comment $r->{comment} unless $which eq "vss" && $r->{action} eq "delete";
+	 comment $r->{comment}
+            if defined $r->{comment}
+               && ! ( $which eq "vss" && $r->{action} eq "delete" );
+         previous_id $r->{previous_id}
+            if defined $r->{previous_id};# && ! $is_bootstrap;
 
 	 if ( $r->{action} eq 'delete' ) {
 	    print STDERR " delete" if $debug ;
@@ -410,7 +752,11 @@ for my $rev_name ( @sorted_rev_names ) {
 	    $digestion = 0 ;
 	 }
 	 else {
-	    if ( ! $pr || $r->{encoding} ne "none" ) {
+	    if ( ! $pr
+               || $pr->{action} eq "delete"
+               || $is_bootstrap
+               || $r->{encoding} ne "none"
+            ) {
 	       print STDERR " content" if $debug ;
 	       start_content encoding => $r->{encoding} ;
 	       if ( $r->{encoding} eq "none" ) {
@@ -424,11 +770,19 @@ for my $rev_name ( @sorted_rev_names ) {
 	       setDataMode( 1 ) ;
 	    }
 	    else {
+               die "No previous rev for $r->{name}#$r->{rev_id}"
+                  unless defined $pr;
+               die "delta in change_id $change_num!"
+                  unless $change_num > 1;
+               my $bv_r = $pr;
+               $bv_r = $versions{$bv_r->{previous_id}}
+                  while $bv_r->{action} eq "delete"
+                     || $bv_r->{action} eq "placeholder";
+
 	       print STDERR " delta" if $debug ;
-	       base_rev_id $pr->{rev_id} ;
 	       start_delta type => 'diff-u', encoding => 'none' ;
 	       _emit_characters(
-                  diff \$pr->{content}, \$r->{content}, {
+                  diff \$bv_r->{content}, \$r->{content}, {
                      STYLE => "VCP::DiffFormat",
                   }
                );
@@ -440,10 +794,11 @@ for my $rev_name ( @sorted_rev_names ) {
       digest md5_base64( $r->{content} ), type => 'MD5', encoding => 'base64'
          if $digestion ;
 
-      $prev{$r->{name}} = $r->{action} eq "delete" ? undef : $r ;
+   END_REV:
+
       if ( $debug ) {
 	 print STDERR " #$r->{rev_id}" ;
-	 print STDERR " \@$r->{change_id})" if defined $r->{change_id} ;
+	 print STDERR " \@$r->{change_id}" if defined $r->{change_id} ;
 	 print STDERR " ($r->{action})\n" ;
       }
    }

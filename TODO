@@ -4,65 +4,346 @@ TODO for VCP
 future feature ideas.  This file will grow to include the more important
 of those.
 
-- Handle differentlt localized timestamps
-
-- Enable an "--append-revs" flag to allow a bootstrap file to be added.  This
-  is dangerous (there's no checking to be sure that the first new version is
-  the first version after the existing version in the repository) but useful.
-
-- Review cvs2p4 and (in the guest depot) vss2p4 for gotchas they catch that we
-  should.
-
-- VCP::Utils::cvs shouldn't be putting a "co" in it's work-root; it should
-  either not use "co" at all or should put it in when translating $rev->name to
-  $work_path.
-
-- PERHAPS checksum all non-binary files line by line, removing all \r's
-
 - Bugfixes
-  - Prevent keyword expansion on all checkouts.  Found by
-    Thomas Quinot <quinot@inf.enst.fr>
-  - Check for p4 >= 99.2 at runtime, since filelog -m is needed
-  - Carry executable bit through (Nick Ing-Simmons)
-  - Make <rev_root> and <name> escape their characters
-  - VCP::Dest::cvs needs to set the binary mode properly on files it creates
-    and checks in
-  - VCP::Source::cvs needs to deduce binary modes correctly
-  - Make test suite use an alternate port for p4d so multiple make test
-    instances can be run in parallel
-  - Make test suite skip cvs tests if cvs is not present (like it skips p4
-    tests if p4 is not present).
+
+    - do not attempt to convert Perforce "purged" revisions
+
+    - if vcp::source::p4 fails to create temporary p4 client,
+      don't try to delete it, or at least, don't complain when
+      the delete fails.
+
+    - deduce_rev_root should be called after all metadata is extracted
+      (or perhaps as it is being extracted) and deduce the root from
+      all of the revisions extracted.  This will eliminate the need for
+      --rev-root to be used with VCP::Source::p4's --follow-branch-into,
+      for instance.
+
+    - VCP::Source::cvs should either ignore a leading "/" before the
+      module name or complain about it.
+
+    - Clean up VCP::Dest::p4 vcp_#### integrate spec.
+
+    - Make it so that a dest of cvs:blah:foo is either an error or is just
+      like cvs:blah:foo/... (if it looks like a directory given the source
+      revs or the target repository topology)
+
+    - Prevent keyword expansion on all checkouts.  Found by
+      Thomas Quinot <quinot@inf.enst.fr>
+
+    * Carry executable bit through (Nick Ing-Simmons)
+
+    * Make <rev_root>, <name>, etc. use binary escapes when needed
+
+    * VCP::Dest::cvs needs to set the binary mode properly on files it creates
+      and checks in [[check status]]
+
+    * VCP::Source::cvs needs to deduce binary modes correctly [[check status]]
+
+    - there should be an filter to detect collisions between
+      underscorified names (users, files, tage) in VCP::Dest::*.
+
+    - use the upcoming -t option for p4 filelog (expected in 2002.2) to
+      extract times with dates.  Issue a warning recommending an upgrade
+      or enabling a metadata reading mode if not present.  Warn about
+      metadata loss when using older p4.
+
+    - get p4 forms parsing to lex *exactly* like p4 does it.
+
+    - fix docs to give .vcp file examples before command line examples
+
+- Testing
+
+    - finish t/95vss2p4.t (all tests should pass, need to clean up RevML).
+
+    - automate VCP-tests/
+
+    - fully test scan/filter/transfer in test suite
+
+    - t/99foo2bar.t "real world corner conditions" tests.
+
+        - Test VCP::Source::cvs branching corner conditions, perhaps all
+          corner conditions for this sort of thing.
+            - when the first rev on a branch is a delete
+            - when the first rev on a branch occurs as the first change in an
+              incremental export
+            - when a file is added on a branch in an incremental conversion
+
+    - Test importing two bootstrap imports one on top of the other
+        - should VCP warn when it detects this?
+
+    - Test CVS vendor tags in cvs->p4 and cvs->cvs; not sure how to do this
+      best; there is no VCP internal designation of a vendor branch.
+      Such a flag would also have to be visible in RevML and would be
+      needed for testing purposes.  Right now, CVS seems to make vendor
+      branches appear as branches of rev 1.1, which is OK, I think, but
+      it means that the first p4 integrate looks backwards.
+
+    - Test aliased CVS tags
+
+    - Test unlabelled CVS branches
 
 - Feature Adds
-  - Need to make the transfers more transactional, so we can recover from where
-    we left off when something fails.
-  - Need to save some sort of state as to where the last export ended so the
-    next one can start from there.
-  - Offer compressed output for revml files a la tar's "z" option.
-  - Consider offering <char code=0x00 repeat=34234> (david d zuhn
-    <zoo@bravara.com>)
-  - Perhaps allow keyword expansion, but convert the expanded texts
-    so that they are no longer seens as RCS style keywords.  This would
-    allow imported files to have a "stamp of origin" in them.  Would
-    also need an option to leave the keywords in place in this case, since
-    the user might presumably want expansion to work correctly in the
-    new repository too.  Suggested by Thomas Quinot <quinot@inf.enst.fr>.
-  - Add a link checker to vcp html
-  - An option to not bring over deleted files Steve James <SJames@ariba.com>
-  - A report destination that offers a preview of what a transfer
-    will do, with summary and long views.
-  - An option to prefix all labels with some user-defined string Steve James
-    <SJames@ariba.com>
-  - Limit the number of NtLkLy queries per command to prevent server lockup.
-    Steve James <SJames@ariba.com>  (possibly URGENT, need to test).
 
+    - Implement --ignore-deleted-files
+
+    - Rename "previous_id" to "parent_id"
+
+    - Deprecate <placeholder /> and implement even <action>...</action>
+
+    - Implement a MetaDataFudge filter to fudge missing user_id, times
+      and comments.  This should perhaps be implemented as a VCP::Dest
+      feature so that it could work on the aggregated comment.
+
+    - Have VCP::Source::cvs set limits on the $r->time field on all
+      branch revs to be identical within the limits possible
+        - Must   be >= parent's time and <= .1 rev's time
+        - Should be >  parent's time and <= .1 rev's time
+        - May need to have multiple times in the case of disjoint
+          timespans between parents and children on the same branch.
+            - Example:
+                - A#1.1     time is 2000-01-01
+                - A#1.1.2.1 time is 2000-01-02
+                - B#1.1     time is 2000-01-03
+                - B#1.1.2.1 time is 2000-01-04
+            - In this case, it's not possible for A#1.1.2.0 and
+              B#1.1.2.0 to have the same timestamps.
+
+    - Improve metadb support
+        - Single flat file, named in spec
+        - add RevML and SOP formats?
+
+    - create .rep files to define repositories
+        - p4 spec format
+
+    - Prompt for repo_id in VCP.stml
+
+    - Pay attention to case-sensitive() throughout
+        - needs a code audit
+            - look for compile_shellish qr, lc, eq, cmp, and uc
+        - pass it in the header to all filters
+        - store it in revml
+
+    - Add the following hints for VSS-> conversions (from gerry@perforce.com)
+
+        |||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
+        Subject: RE: [p4] Migration hints from Visual SourceSafe
+        Date: Sun, 13 Jul 2003 09:45:37 +0200
+        From: "Yariv Sheizaf" <yariv_sheizaf@bezeqint.net>
+        To: <perforce-user@perforce.com>, <Thierry.Michalowski@echotech.ch>
+
+        Hi Thierry,
+
+        We just finished to convert to big (3GB each) VSS databases
+        to Perforce using the VSS2P4 script.
+
+        The script itself running coorrectly, and its installation is easy.
+        Pay attention to two elements:
+
+        1. Locate all components required for the conversion process:
+           VSS DB, Perforce server+DB, Vss2P4 script -
+           on the same machine.
+           It reduces the conversion time very much (6 hours instead of 6 days).
+
+        2. Run "analyze" and "analyze -f" if needed on the VSS DB until it fixed -
+           no error messages should be appeared.
+           In any case that the VSS DB is not consistent (e.g. - does not
+           passing "analyze" correctly) - the conversion process will fail.
+
+        Regards,
+
+        Yariv
+        |||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
+
+    - Bundle HTML docs with the app, don't require HTML::Links as a
+      prerequisite in the CPAN dist or vcp.pl file.
+
+    - Allow the called executable name (cvs, p4, etc) to be set as an option.
+
+    - Transfer and translate branch specs and other metadata on
+      p4->p4 transfers.
+
+    - Extend revml to have a <client> tag to allow p4->* conversions
+      to carry the p4 client through.
+
+    - option to lock label specs (integrate specs)?
+
+    - Handle differently localized timestamps.  RevML should be
+      in GMT or use ISO8601's tz indicators.
+
+    - VCP::Dest::cvs Investigate running cvs as root to spoof user
+      names properly
+        - setting the called executable name (another todo) could
+          be extended to allow multi-word invocations
+        - looks like cvs calls getlogin(), might need to spoof
+          wtmp to do this
+
+    - VCP::Dest::cvs Write RCS files directly
+        - only way to get accurate data in to RCS file format
+            - usernames, times
+
+    - VCP::Filter::usermap to allow usernames to be altered
+
+    - VCP::Filter::commentedit to allow comments to be edited (post-sort
+      but pre change aggregation); this is to allow cvs2p4-like comments.
+
+    - warn when a *Map filter is used and the default <<keep>> action
+      fires, because this indicates a possible missing or faulty rule.
+
+    - improve error reporting for .vcp files. Either use recursive descent
+      to delegate each value to the appropriate object or capture line and
+      column with each value for error reporting.
+
+    - give better diagnostics when the state file appears to be out of
+      date:
+      - when --continue is specified we can't.
+      - when --continus is not specified and a revision already exists in
+        the destination state files (but not in the destination rep).  We
+        could keep track of the last known change to the destination in
+        the state file and probe to see if that file is at the indicated
+        revision.  Or just watch for revisions coming along that should be
+        in the dest (according to the state file) but aren't.
+
+    - Add a --skip-unchanged-revs option or VCP::Filter that skips
+      unchanged revisions; all children of such a revision become
+      children of that revision's parent.
+
+    - Enable an "--append-revs" flag to allow a bootstrap file to be
+      added.  This is dangerous (there's no checking to be sure that the
+      first new version is the first version after the existing version in
+      the repository) but useful.  This might be done already with
+      --bootstrap specified on the source, but is completely untested
+
+    - reports and queries against the state files to show:
+      - head rev of each filebranch
+      - what source revs ended up where (path & rev_id)
+      - how branches got mapped
+      - what the main branch_id is for foo->cvs imports.
+      - what fields got edited how by StringEdit, Map, LabelMap, etc.
+
+    - Make the transfers more transactional, so we can recover from
+      where we left off when something fails.  We're part way there with
+      the --continue support, but VCP needs to log what it's about to
+      submit and sniff out how far the submittal got before it blew up.
+      This would allow recovery by updating the state files to the
+      correct state and not trying to double commit files.
+
+    - Allow the state files to be checked in to the destination.  Probably
+      as text, in order to avoid sdbm byte ordering issues if they are
+      checked out on a differently byte ordered system.
+
+    - Perhaps allow keyword expansion, but convert the expanded texts
+      so that they are no longer seens as RCS style keywords.  This would
+      allow imported files to have a "stamp of origin" in them.  Would
+      also need an option to leave the keywords in place in this case, since
+      the user might presumably want expansion to work correctly in the
+      new repository too.  Suggested by Thomas Quinot <quinot@inf.enst.fr>.
+
+    - Add a link checker to vcp html
+
+    - An option to not bring over deleted files Steve James <SJames@ariba.com>
+
+    - A report destination that offers a preview of what a transfer will
+      do, with summary and long views.
+
+    - Limit the number of NtLkLy queries per command to prevent server lockup.
+      Steve James <SJames@ariba.com>  (possibly URGENT, need to test).
+
+    - Set CVS_PASSFILE for all cvs invocations to prevent mucking with the
+      users' current .cvspass
+
+    - Use ptys to handle CVS login, if available.  Recomend installing
+      IO::Pty if needed but not installed.
+
+    - implement VCP::Source::cvs -d option when scanning RCS files
+
+    - PERHAPS checksum all non-binary files line by line, removing all \r's
+      in order to reduce sensitivity to varying platform settings between
+      the source and the destination.
+
+    - allow VCP::{Source,Dest}::* to "sniff" at unknown directories /
+      files to see if they can detect what kind of repository is there.
+      This will make schemes optional, so tab completion will work again.
 
 
 - Efficiency
-  - The cvs drivers can be made faster
-  - VCP::Source::revml should only reconstitute what it needs in order
-    to conserve disk space.
 
-- Tests
-  - rerooting revml->p4 to someplace deep in the p4 tree, to make sure that VCP
-    is configuring p4 to map the files to the right place.
+    - Batch cvs checkouts somehow (see clkao's patch)
+
+    - extend VCP::Source::cvs to build revisions directly from the RCS
+      files, this will probably mean memorizing the offsets of the delta
+      or full text chunk for each version in the RCS file, then applying
+      them all as needed to get the desired version.  They may need to be
+      reversed as a speed hack since RCS files tend to store the most
+      recent revision in full text and uses deltas from that to encode
+      older revisions, and we'll probably want the oldest revision first.
+      This means that we can build the more recent revisions from the
+      older revisions by reversing the deltas as we apply them to build
+      the older revisions, then apply those reversed deltas.  Or
+      something; not sure what's best here.
+
+    - VCP::Source::revml should only keep on hand the versions it needs at
+      each moment in order to conserve disk space.  The problem with this
+      is that the RevML may be coming from a non-seek()able byte stream,
+      like STDIN, so we need to patch as we go.  One alternative is to
+      cache the revml off to the side and rescan it if this happens.
+      Another is to only patch- as-you-go if the input is non-seek()able.
+      NOTE: P'haps VCP::Source::revml and VCP::Source::cvs can share the
+      RCS file scanner.  NOTE: P'haps VCP::Source::revml and
+      VCP::Source::cvs can share the an internal file revision format; RCS
+      is bass ackwards for our needs.
+
+    - in --continue mode, VCP::Source::p4 could do a p4 files to get all
+      the source_filebranch_ids and then get the last_rev_in_filebranch
+      for each, which would probably be a lot quicker than running a full
+      filelog and throwing away most of the data (ie for a --continue on a
+      large tree with lots of changes, but only one or two files have
+      changed since the last export).
+
+    - Consider offering a repeat attribute in RevML <char code="0x00"
+      repeat="34234"> (david d zuhn <zoo@bravara.com>)
+
+    - the RevMapDB should be purged of any revisions descended from a
+      revision being transferred.  Right now, if you restore the set
+      repository from an earlier backup and don't rewind the vcp_state
+      directory, you will end up with a mix of RevMapDB entries from the
+      prior transfer and the current.  For now, a warning is generated.
+
+
+- Cleanup
+
+    - replace assert_eq (and it's *huge* reams of output on failure)
+      with ok_or_diff. [Mostly done]
+
+    - use VCP::Utils::is_win32() whereever $^O is tested for win32.
+
+    - Refactor File::Spec->rel2abs( ..., start_dir ) calls in to a new
+      VCP::Utils::start_dir();
+
+    - Refactor $self->work_path( "co" ... ) calls in to a
+      VCP::Plugin::checkout_path( ... ) or generalize the concept of a
+      repository workspace.
+
+    - use parent/child nomenclature instead of previous/next
+
+- Rejected
+
+    - VCP::Source::p4 should be able to create and read a metadata dump as
+      an option.  Watch out for different schemas in different p4d
+      versions.  Q: Read the btree files directly? 'twould be faster and
+      more space efficient.  (rejected by Perforce so as to not tie VCP to
+      p4d's schema; this may still be contributed as OSS by others, but
+      will not be done by the core team any time soon unless the plans
+      change)
+
+    - VCP::Dest::p4 should write a metadata file directly, and be able to
+      merge new data in to a destination's exported metafile for reimport.
+      Q: Write the btree files directly?  This would bypass any checking
+      p4d does on recovering from a metadata file.  (rejected by Perforce
+      so as to not tie VCP to p4d's schema; this may still be contributed
+      as OSS by others, but will not be done by the core team any time
+      soon unless the plans change)
+
+    - An option to prefix all labels with some user-defined string Steve
+      James <SJames@ariba.com> (this is no longer necessary, as vcp does
+      not add its own labels by default).
+

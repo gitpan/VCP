@@ -1,0 +1,11 @@
+#!/usr/local/bin/perl -w
+
+use strict;
+
+use VCP::HeadRevsDB;
+
+my $db = VCP::HeadRevsDB->new( @ARGV ? ( StoreLoc => shift ) : () );
+$db->open_existing_db;
+$db->dump( \*STDOUT );
+$db->close_db;
+

@@ -1,6 +1,190 @@
 CHANGES for vcp - Version CoPy
 
-0.3
+   - Upgraded to new STML
+   - UI now prompts in multiple choice as appropriate
+   - Added DefaultFilters.pm, which loads in default filters if vcp's
+     interactive user interface is used.  These filters typically will
+     be map filters or maybe stringedit filters for allowable
+     character set issues.
+   - Added handling of VCPP4LICENSE environment variable in
+     Dest::p4.pm.  If that's present and pointing to a readable file
+     when a p4 daemon is started, a symlink will be created in the
+     (possibly newly created) p4root directory to point to the p4
+     license file pointed to by VCPP4LICENSE.  The 'make' target
+     test_all_p4_versions will cycle through each version of p4 and
+     p4d contained in the 'p4versions' directory, in both unlicensed
+     and (if VCPP4LICENSE present) licensed mode.
+   - VCP::Source::cvs creates multiple revisions for each source
+     revision when the CVS source repository has multiple tags for a
+     branch; this facilititates the creation of multiple identical
+     branches in VCP::Dest::p4 in this case but confuses
+     VCP::Dest::cvs (IOW CVS->CVS trasfers will not transfer these
+     tags properly).  - added test_all_p4_versions and related files
+     to test all p4 versions found in subdirectory of the main project
+     dir, 'p4versions'.  Each directory there should be named like a
+     p4 version string, and should contain a both p4 and p4d
+     executables for that version.  - remove --state-location switch
+     add --db-dir and --repo-id switches build state location from
+     concatenation of those two.  - p4 tweaks the change specification
+     of each submitted change to get the timestamp (Date:) and user id
+     (User:) correct.  - vcp can now --continue for incremental
+     transfers.  This will also allow resumption of interrupted
+     transfers in some cases, but is not designed for that and does
+     not handle a number of cases gracefully.
+
+   - vcp no longer labels/tags each revision of each file in the
+     destination repository with the rev_id or change_id that revision
+     had in the source repository
+   
+   - VCP::Dest::branch_diagram now reports the action on each revision
+     or whether the revision is a placeholder or base revision.
+
+   - The special debug keyword "all" has been added to make every
+     possible debugging statement fire.
+
+   - Added state files.  VCP now stores the state of each transfer so
+     - it can tell what revisions from the source repository ended up as
+       what revisions in the destination repository 
+     - it can tell where a transfer left off and --continue from there
+     - incremental imports can remember the state of each file in the
+       destination to avoid double-deleting or double-adding files.
+   - there are uninstalled bin/dump_ utilities to allow the state files
+     to be examined; at some point the VCP command should have
+     a report mode to do some of this.
+   - branch handling is now fully functional for p4 and cvs
+   - cvs now does a better job of underscorifying tags
+   - p4 now does a better job of underscorifying filenames
+   - command line options parsing is now inherited in
+     VCP::{Source,Dest}::* and shared options are parsed by base
+     classes.
+   - Added a source_repo_id to each revision, and repo_id to each Source
+     and Dest.  The repo_ids include repository type (cvs, p4, revml,
+     vss, ...) and the repo_server fields. This is used to identify
+     the source and destination of each transfer in the state file.
+   - Added option to output revml without leading blanks
+   - Added options to handle compressed revml input and output files
+   - Add fields to vcp:
+       source_name, source_filebranch_id, source_branch_id,
+       source_rev_id, source_change_id
+     Alter dtd, gentrevml, VCP source code, and test suite to
+     accommodate new fields.
+   - .vcp files may now take an Options: section.  This is acted on
+     before any other sections are parsed.
+   - VCP::Filter::addlabels is now used to allow the user to
+     configure in the addition of "rev_###" or "change_###" style
+     labels.  This is no longer done automatically by VCP::Dest::*
+     for performance and configurability reasons.
+   - Added VCPPROFILETIME environemnt variable.  Iff this is true,
+     add unix 'time' elapsed times to profile log.
+   - Added profiling via VCPPROFILE environment variable.  Setting this
+     will log timing info anytime the 'profile' sub is called, or anytime
+     'run' or 'run_safely' is used to execute a sub-process.     
+   - VCP::Utils::cvs now supports "real" RCS tag validity checking and
+     underscorification
+   - VCP::Dest::cvs modifies a file's mtime if it hasn't changed since the
+     cvs update -r that came before it (this is used when branching files;
+     we fire files at cvs so fast that the mtimes collide).
+   - Temporary directory creation in VCP::TestUtils now uses File::Temp
+     and has more useful defaults for names so that temp dirs for testing
+     are easier to work with and naming collisions avoided.
+   - VCP::{Source,Dest}::p4 now supports a --run-p4d option
+   - VCP::{Source,Dest}::p4 now hunt for unused ports when launching a p4d
+     (increasing reliability)
+   - VCP::{Source,Dest}::p4 now use the p4 info command to detect when the p4d
+     is running (increasing speed and reliability compared to "sleep 1").
+   - revml sources now let you use wildcards to select a subset of
+     the files: revml:/path/to/file.revml:.../wild*card/...
+   - The test suite is now factored in to smaller chunks that allow
+     shorter, faster testing of specific conversions, like t/95cvs2p4.t.
+   - VCP::Dest::p4 can now create a repository, useful for testing and
+     for conversions.  See the --init-p4d and --delete-p4d-dir options
+     of VCP::Dest::p4.
+   - Added .vcp file and vcp: scheme support (NEEDS DOCS)
+   - Major sort optimizations
+   - VCP now uses a chain of plugins instead of just a source and a dest.
+   - VCP::Source::cvs reads local repositories directly (speed, accuracy opt)
+     use the --use-cvs option to defeat this in case there's a bug.
+   - cleanup output of branch_diagram.pm
+   - Added VCP::{Source,Dest}::null
+   - reduced number of modules loadef by vcp help, vcp null: null: to
+     speed test suite and make the command feel more responsive.
+   - VCP::Dest::cvs now supports an --init-cvsroot option that, for local
+     CVSROOT dirs only, convinces it to create and run cvs init in that
+     directory if it doesn't already have any non-hidden files in it.
+   - VCP::*::cvs now allow relative paths in their specs (but not in
+     $ENV{CVSROOT}, that's too dangerous, I believe).
+   - Started to use Test::Verbose, the =for test_scripts POD directives
+     are to support that.
+   - Various POD formatting fixes
+   - p4 form parsing is improved, still needs to be made completely identical
+     to real p4(1) forms lexing and parsing.
+   - An undocumented "hires" timestamp may now be enabled by debugging
+     the "hires" target:  VCPDEBUG=.*,hires vcp ...
+   - new RevML DTD to support branch maps
+   - $self->$cmd(...) now takes an in_dir option that allows temporary
+     overriding of the $self->command_chdir value.
+   - started refactoring of test suites for faster, easier usage
+   - The test suite now logs the commands it runs and times them.  The
+     times may be removed later, not sure.
+
+0.4
+   - Branch support has been added to the VCP core and to
+     VCP::*::{revml,cvs} and VCP::Source::p4
+   - source and destination spec parsing has been tweaked: the rev_root
+     parsing now assumes that a path containing no wildcards and ending
+     in something other than '/' or '\' is not part of the root, it is
+     part of what's being moved.  This is experimental: most users don't
+     expect trailing '/' to be necessary.  This should probably be
+     determined by scanning the revs collected to see whether the spec
+     refers to a directory or to a file, and there should be an error if
+     a '/' is present after a what turns out to be a file.
+   - CVS specs "cvs::pserver:....:foo" are now split in to 3 pieces, the
+     scheme ("cvs:", ":pserver:....", and "foo"), with the middle part
+     being the CVSROOT and the last part being the path within the
+     repository.  This is triggered by the double colon after the scheme
+     name, which is odd but logically consistent: the first colon is the
+     scheme end delimiter, the second is the first character in any
+     CVSROOT remote server spec.  If no double colon, then the string is
+     parsed as before and the server portion of the spec becomes CVSROOT
+     (this is for access to a local repository), but note that user name
+     and password are ignored
+   - VCP::Dest::cvs can now be handed a destination directory that
+     does not exist and will call "cvs import" to create it.  This is
+     only done for the directory specified in the third part of the
+     destination specification from the command line.
+   - VCP::*::cvs no longer checks out the entire top level directory
+     indicated by the first name in the destination spec.  This
+     space and time when dealing with small portions of a repository.
+   - VCP::*::cvs will log in to remote repositories.  NOTE: it cannot
+     script this on all platforms, Win32 version of cvs.exe probably
+     use direct BIOS calls to get the password.  So VCP::*::cvs
+     ignore all passwords for now :(.  Once IPC::Run syncs with
+     the new IO::Pty, I'll at least script them on Unixian OSes.
+     NOTE 2: cvs documents that it will not prompt for a password
+     if CVSROOT contains a password, but it still prompts for one
+     here, and consideres the "user:password" string to be the user
+     name.
+   - VCP::Dest::branch_diagram is a new EXPERIMENTAL module.
+   - bin/vcp now acts as a Unix filter for RevML again and understands
+     ommited specs and "-" as a source / dest to make manhandling
+     RevML files easier.  VCP::*::revml emits useful messages if
+     they can't be loaded in order to steer hapless users towards the
+     help system if the XML modules needed aren't there.  XML::Parser,
+     for instance, isn't shipped with vcp.pl (the all-in-one script)
+     due to the need for a C compiler.
+   - VCP::*::cvs now normalizes the filespec so runs of '/' or of '\'
+     are squashed to be single chars; cvs does not seem to treat
+     '/' as idempotent on Unix.
+   - Removed warts from RevML parser logic
+   - Removed rev_count from the spec: it's not needed or used
+   - Added <revml>/<comment> to the test suite
+   - "make clean_tmp" now does  rm -rf  on /tmp/vcp*.  This is useful after
+     debugging with VCPNODELETE=1
+   - There's a new "metadata_only" attribute on all destinations so that
+     branch_diagram.pm can say "hey, don't bother giving me any data".
+     hmmm, could add that as an option for VCP::Dest::revml.
+
+0.3 Fri May 24 15:05:25 EDT 2002
    - VSS Support added
    - bin/vcp now errors out sooner on command line errors to avoid
      misconstruing poorly typed parameters early in @ARGV as errors in later

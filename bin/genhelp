@@ -1,0 +1,267 @@
+=head1 NAME
+
+genhelp - Build lib/VCP/Help.pm by extracting POD from the listed files
+
+=head1 SYNOPSYS
+
+    genhelp bin/vcp lib/VCP.pm lib/VCP/Foo.pm ...
+
+=head1
+
+When bundling libraries and POD files with PAR <= 0.79, it is difficult
+to find and parse the files to generate help with.  So we extract it
+and build it in to a Perl module as a bunch of strings using this tool.
+
+See Makefile.PL for how this tool is automated.
+
+=cut
+
+my $text;
+    ## My::Pod::Usage writes to this instead of STDOUT.  It's a global
+    ## to allow us to call pod2usage() and collect its output.
+
+###############################################################################
+package My::Pod::Text;
+
+use Pod::Text;
+
+@ISA = qw( Pod::Text );
+
+sub parse_from_file {
+    my $self = shift;
+    $text = "";
+    $self->SUPER::parse_from_file( @_ );
+}
+
+sub output {
+    $text .= $_[1];
+}
+
+###############################################################################
+package main;
+
+use strict;
+use lib 'lib';
+use List::Util;
+use Pod::Usage;
+use VCP::PodDESCRIPTIONParser;
+use VCP::PodOPTIONSParser;
+use Text::Wrap qw( wrap );
+
+## HACK: Pod::* are very single minded about only outputting to the
+## console.  Subvert Pod::Usage.
+@Pod::Usage::ISA = qw( My::Pod::Text );
+
+use lib 'lib';
+
+open OUTPUT, ">lib/VCP/Help.pm" or die "$!: lib/VCP/Help.pm";
+
+warn "writing lib/VCP/Help.pm\n";
+
+print OUTPUT <<PREAMBLE;
+package VCP::Help;
+
+\%topics = (
+PREAMBLE
+
+sub print_topic {
+    my ( $topic, $text ) = @_;
+
+    $topic = lc $topic;
+
+    $text =~ s/^TOPIC/ TOPIC/mg
+        and warn "TOPIC escaped in $topic\n";
+        ## This should never happen, so it's ok if a wonky little leading
+        ## space is added: graceful degredation.
+
+    1 while chomp $text;
+
+    print OUTPUT "#" x 72, "\n'$topic' => <<'TOPIC',\n$text\nTOPIC\n";
+}
+
+sub wrap_pod_paragraphs {
+    local $Text::Wrap::columns = shift;
+    return map /^\s/ || /==\z/
+       ? "$_"
+       : wrap(
+           "",
+           "",
+           map split( /\n+/ ), $_
+       ),
+       @_;
+}
+
+
+sub pod_paragraphs_to_string {
+    return join
+       "\n",
+       "",
+       map( "$_\n", wrap_pod_paragraphs 60, @_ ),
+           ## We wrap at 60 because paragraphs that pass through here
+           ## are destined to be printed to a config file as inline
+           ## commmentary and need to be narrow so they can be indented.
+       "\n";
+
+}
+
+
+sub wrap_into_3_columns {
+    my @topics = @_;
+
+    ## Display 3 columns of topics
+    push @topics, "" while @topics % 3;
+
+    my $l = List::Util::max( map length, @topics );
+
+    my $m = @topics / 3;
+
+    return join "",
+        map(
+           sprintf(
+              "    %-${l}s   %-${l}s   %s\n",
+              @topics[ $_, $_+$m, $_+2*$m ]
+           ),
+           (0..$m - 1)
+        );
+
+}
+
+
+sub class_hierarchy {
+   my ( $class ) = @_;
+
+   my @isa_q = ( $class );
+       ## The queue of unvisited classes
+
+   my %seen_classes;
+       ## Classes to be skipped because they've been seen.
+
+   my @classes;
+   while ( @isa_q ) {
+      my $class = shift @isa_q;
+      next if $seen_classes{$class}++;
+
+      push @classes, $class;
+
+      push @isa_q, do {
+         no strict "refs";
+         @{"${class}::ISA"};
+      };
+   }
+
+   return @classes;
+}
+
+
+
+###############################################################################
+
+my @topics;
+my %seen;
+for my $fn ( @ARGV ) {
+    my $topic = $fn;
+    $topic =~ s{.*\b(bin|VCP)[\\/]}{}i;
+    $topic =~ s{\..*}{};
+    $topic =~ s{[\\/]}{::}g;
+
+    warn( "Already emitted topic $topic from $seen{$topic}\n" ), next
+        if $seen{$topic};
+    $seen{$topic} = $fn;
+    push @topics, $topic;
+
+    ## Convert the whole POD in to a large help file for "vcp help"
+    do {
+        my $p = My::Pod::Text->new( width => 72 );
+        $p->parse_from_file( $fn );
+    };
+
+    print_topic $topic, $text;
+
+    ## Extract usage and config file docs for sources, filters and dests
+    next unless $topic =~ /^(vcp$|source::|filter::|dest::)/i;
+
+    pod2usage(
+        -input   => $fn,
+        -verbose => 0,
+        -exitval => 'noexit',
+    ) ;
+
+    print_topic "$topic usage", $text;
+    if ( $topic ne "vcp" ) {
+        print_topic "$topic description",
+            pod_paragraphs_to_string
+                @{VCP::PodDESCRIPTIONParser->parse( $fn )};
+
+        my $class = "VCP::$topic";
+        eval "require $class" or die "$@: VCP::$class\n";
+        my @classes = class_hierarchy $class;
+        my $opts_hash = VCP::PodOPTIONSParser->parse( reverse @classes );
+            ## reverse()d because we want parent classes to be scanned
+            ## first so derived classes can replace options docs.
+
+        for ( sort keys %$opts_hash ) {
+            ( my $name = $_ ) =~ s/^--?//;
+            print_topic(
+                "$topic option $name",
+                pod_paragraphs_to_string( @{$opts_hash->{$_}} )
+            );
+        };
+    }
+}
+
+{
+    @topics = sort @topics;
+
+    print_topic "topics",
+        join "",
+            "vcp help topics:\n\n",
+            wrap_into_3_columns( @topics );
+}
+
+{
+    print_topic "", <<'TOPIC';
+vcp - Version Copy, a tool for copying versions file repositories
+
+help topics (use "vcp help <topic>" to see):
+
+   vcp            General help for the vcp command
+
+   source::cvs    Extracting from a cvs repository
+   source::p4     Extracting from a p4 repository
+   source::vss    Extracting from a VSS repository
+   dest::cvs      Inserting in to a cvs repository
+   dest::p4       Inserting in to a p4 repository
+
+   newlines       Newline, ^Z and NULL issues
+   process        How vcp works
+
+   license        Copyright and license information
+   topics         All available topics
+
+The PAGER environment variable specifies pager program to use for
+these help topics.
+TOPIC
+}
+
+print OUTPUT <<POSTAMBLE;
+);
+
+sub get {
+    shift;
+    my ( \$topic ) = \@_;
+
+    \$topic = '' unless defined \$topic;
+    \$topic = lc \$topic;
+    \$topic =~ s/^vcp:://;
+
+    warn( "unkown help topic: '\$topic'\\n\\n" ), return
+        unless \$topics{\$topic};
+
+    return \$topics{\$topic};
+}
+
+sub print { CORE::print        shift->get( \@_ ); }
+sub error { CORE::print STDERR shift->get( \@_ ); }
+
+1;
+POSTAMBLE

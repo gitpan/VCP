@@ -2,18 +2,19 @@ package VCP::Source::revml ;
 
 =head1 NAME
 
-VCP::Source::revml - Outputs versioned files to a revml file
+VCP::Source::revml - Reads a RevML file
 
 =head1 SYNOPSIS
 
-   vcp revml[:<source>]
-   vcp revml[:<source>] --dtd <dtd>
+## revml input class:
+
+   vcp foo.revml                     [dest_spec]
+   vcp foo.revml --uncompress        [dest_spec]
+   vcp foo.revml --dtd <revml.dtd>   [dest_spec]
+   vcp foo.revml --version <version> [dest_spec]
+   vcp revml:foo.revml:/foo/bar/...  [dest_spec]
 
 Where <source> is a filename for input; or missing or '-' for STDIN.
-
-To compile a DTD in to a perl module:
-
-   revml: --dtd <dtd> --save-doctype
 
 =head1 DESCRIPTION
 
@@ -24,14 +25,46 @@ directory in order to make sure that all of the patches apply cleanly.
 This can require a huge amount of disk space, but it works (optimizing
 this is on the TODO).
 
+=head1 OPTIONS
+
+=over
+
+=item --dtd
+
+   --dtd=0.33
+   --version=0.33
+
+Use the indicated DTD version (must be compiled in to VCP) to parse
+the RevML file.
+
+=item --uncompress
+
+Force uncompression of gzipped input.
+If the input file ends in '.gz', the uncompress flag is implied.
+
+=back
+
 =cut
+
+=for DEVELOPER_USE_ONLY
+To use an alternate DTD:
+   vcp revml[:<source>] --dtd <dtd>
+
+=cut
+
+use VCP::Logger qw( pr BUG );
+
+$VERSION = 0.1 ;
+
+@ISA = qw( VCP::Source VCP::Utils::revml );
 
 use strict ;
 
 use Carp ;
-use Fcntl ;
-use Getopt::Long ;
 use Digest::MD5 ;
+use Fcntl ;
+use File::Path;
+use File::Spec;
 use MIME::Base64 ;
 use RevML::Doctype ;
 use Symbol ;
@@ -40,28 +73,33 @@ use XML::Parser ;
 use Time::Local qw( timegm ) ;
 use VCP::Debug ':debug' ;
 use VCP::Patch ;
+use VCP::RefCountedFile;
 use VCP::Rev ;
+use VCP::Source;
+use VCP::Utils qw( empty shell_quote start_dir_rel2abs );
+use VCP::Utils::revml;
+#use base qw( VCP::Source VCP::Utils::revml ) ;
 
-use vars qw( $VERSION $debug ) ;
-
-$VERSION = 0.1 ;
-
-$debug = 0 ;
-
-use base 'VCP::Source' ;
-
-use fields (
-   'COPY_MODE', ## TRUE to do a copy, FALSE if not (like when writing .pm DTD)
-   'DOCTYPE',
-   'HEADER',    ## The $header is held here until the first <rev> is read
-   'IN_FH',     ## The handle of the input revml file
-   'IN_NAME',   ## The name of the input revml file, or '-' for stdout
-   'WORK_NAME', ## The name of the working file (diff or content)
-   'WORK_FH',   ## The filehandle of working file
-   'REV',       ## The VCP::Rev containing all of this rev's meta info
-   'STACK',     ## A stack of currently open elements
-   'UNDECODED_CONTENT', ## Base64 content waiting to be decoded.
-) ;
+#use fields (
+#   'DTD_OPTION',        ## The --dtd or --version flag from the command line
+#   'DOCTYPE',           ## revml doc type
+#   'HEADER',            ## The $header is held here until the first <rev> is read
+#   'IN_FH',             ## The handle of the input revml file
+#   'WORK_NAME',         ## The name of the working file (diff or content)
+#   'WORK_FH',           ## The filehandle of working file
+#   'REV',               ## The VCP::Rev containing all of this rev's meta info
+#   'STACK',             ## A stack of currently open elements
+#   'UNDECODED_CONTENT', ## Base64 content waiting to be decoded.
+#   'FILESPEC_RE',       ## A perl5 re compiled from $self->repo_filespec
+#   'UNCOMPRESS',        ## un-compress gzipped input
+#   'HEADER_ENDED',      ## Set when the first <rev> is encountered
+#   'FILES',             ## A hash of files that were created as we read the
+#                        ## RevML.  This is keyed on revision ID and contains
+#                        ## VCP::RefCountedFile objects.  get_source_file()
+#                        ## deletes these and returns the RefCountedFiles
+#                        ## objects, so the disk space is reclaimed whenever
+#                        ## the end point is finished with the file.
+#) ;
 
 
 #=item new
@@ -69,129 +107,208 @@ use fields (
 #Creates a new instance.  The only parameter is '-dtd', which overrides
 #the default DTD found by searching for modules matching RevML::DTD:v*.pm.
 #
-#Attempts to open the input file if one is specified.
-#
-#If the option '--save-doctype' is passed, then no copying of resources
-#is done (queue_all returns nothing to copy) and the doctype is saved
-#as a .pm file.  See L<RevML::Doctype> for details.
-#
 #=cut
 
 sub new {
-   my $class = shift ;
-   $class = ref $class || $class ;
+   my $self = shift->SUPER::new;
 
-   my VCP::Source::revml $self = $class->SUPER::new( @_ ) ;
+   my ( $spec, $options ) = @_ ;
 
-   $self->{COPY_MODE} = 1 ;
+   $self->parse_revml_repo_spec( $spec )
+      unless empty $spec;
 
-   my ( $spec, $args ) = @_ ;
+   $self->parse_options( $options );
 
-   my $parsed_spec = $self->parse_repo_spec( $spec ) ;
+   return $self;
+}
 
-   my $save_doctype ;
-   {
-      local *ARGV = $args ;
-      GetOptions(
-	 'dtd|version' => sub {
-	    $self->{DOCTYPE} = RevML::Doctype->new( shift @$args ) ;
-	 },
-	 'save-doctype' => \$save_doctype,
-      ) or $self->usage_and_exit ;
+
+sub options_spec {
+   my $self = shift;
+   return (
+      $self->SUPER::options_spec,
+      'dtd|version=s' => \$self->{DTD_OPTION},
+      'uncompress'    => \$self->{UNCOMPRESS},
+   );
+}
+
+
+sub init {
+   my $self = shift ;
+
+   $self->SUPER::init;
+
+   $self->{DOCTYPE} = RevML::Doctype->new(
+       $self->{DTD_OPTION},
+       main::bundled_files()
+   );
+
+   my $file = $self->decide_actual_input_filename;
+
+   # always un-compress if filename ends in ".gz"
+   my $gzip;
+   if ( $^O =~ /Win32/ ) {
+      $self->{UNCOMPRESS} = 1 if $file =~ /\.gz$/i ;
+      $gzip = "gzip.exe";
+   }
+   else {
+      $self->{UNCOMPRESS} = 1 if $file =~ /\.gz$/ ;
+      $gzip = "gzip";
    }
 
-   $self->{DOCTYPE} = RevML::Doctype->new
-      unless $self->{DOCTYPE} ;
+   my $fs = $self->repo_filespec;
+   $self->{FILESPEC_RE} = ( ! empty $fs )
+      ? do {
+         $fs =~ s{^/+}{};
+         $self->compile_path_re( $fs )
+      }
+      : qr{^};
 
-   if ( $save_doctype ) {
-      $self->{COPY_MODE} = 0 ;
-      $self->{DOCTYPE}->save_as_pm ;
-   }
-   my @errors ;
-
-   my $files = $parsed_spec->{FILES} ;
-
-   $self->{IN_NAME} = defined $files && length $files
-      ? $files
-      : '-' ;
-
-   if ( $self->{IN_NAME} eq '-' ) {
-      $self->{IN_FH}   = \*STDIN ;
+   if ( $file eq '-' ) {
+      if( $self->{UNCOMPRESS} ) {
+         open( $self->{IN_FH}, "gzip --decompress --stdout - |" )
+            or die "$!: gzip --decompress --stdout - |";
+      }
+      else {
+         $self->{IN_FH}   = \*STDIN ;
+      }
       ## TODO: Check IN_FH for writability when it's set to STDIN
+      ## don't you mean readability?
    }
    else {
       require Symbol ;
       $self->{IN_FH} = Symbol::gensym ;
-      open( $self->{IN_FH}, "<$self->{IN_NAME}" )
-         or die "$!: $self->{IN_NAME}\n" ;
+
+      if( $self->{UNCOMPRESS} ) {
+         my $in_name = shell_quote $file;
+
+         open( $self->{IN_FH}, "gzip --decompress --stdout $in_name |" )
+            or die "$!: gzip --decompress --stdout $in_name |";
+      }
+      else {
+         open( $self->{IN_FH}, "<$file" ) or die "$!: $file\n";
+      }
    }
 
    $self->{WORK_FH} = Symbol::gensym ;
-
-   die join( '', @errors ) if @errors ;
 
    return $self ;
 }
 
 
-sub dest_expected {
-   my VCP::Source::revml $self = shift ;
+# ??? call this twice or only once if already set????
+sub decide_actual_input_filename {
+   my $self = shift;
 
-   return $self->{COPY_MODE} ;
+   ## This supports a brain-dead compatability mode where you can
+   ## "just" say revml:filename.revml or even just filename.revml
+   ## on the command line.  The parse routines will stick that
+   ## in repo_filespec and not set the server.  If, however, the
+   ## server is set, then the filespec is a pattern we need to use
+   ## to select files.
+   my $file = $self->repo_server;
+   if ( empty $file ) {
+      $self->repo_server( $self->repo_filespec );
+      $self->repo_filespec( undef );
+      $file = $self->repo_server;
+   }
+
+   $file = "-"
+      if empty $file;
+
+   $file = $self->repo_server(
+      start_dir_rel2abs $file
+   ) unless $file eq "-";
+
+   $file = "-" if empty $file;
+
+   return $file;
 }
+
+
+
+=item ui_set_revml_repo_spec
+
+set the repo_spec, but die if no good.
+this should be called from a ui handler that
+will handle exceptions.
+
+
+
+=cut
+
+sub ui_set_revml_repo_spec {
+   my $self = shift ;
+
+   $self->parse_revml_repo_spec( @_ );
+   my $file = $self->decide_actual_input_filename;
+   die "Error: '-' signifies standard input, not a file name.\n"
+      if $file eq '-';
+   die "Error: '$file' is a directory.\n"
+      if -d $file;
+   die "Warning: '$file' not found!\n"
+      unless -e $file;
+   die "Warning: '$file' not is not a plain file!\n"
+      unless -f $file;
+   die "Warning: '$file' not readable!\n"
+      unless -r $file;
+}
+
 
 
 sub handle_header {
-   my VCP::Source::revml $self = shift ;
+   my $self = shift ;
 
    ## Save this off until we get our first rev from the input
-   $self->{HEADER} = shift ;
-   return ;
-}
+   ( $self->{HEADER} ) = @_;
 
+   rmtree [ $self->_db_store_location( 'source_files') ];
 
-sub get_rev {
-   my VCP::Source::revml $self = shift ;
-   my VCP::Rev $r ;
-   ( $r ) = @_ ;
-}
-
-
-sub copy_revs {
-   my VCP::Source::revml $self = shift ;
-
-   $self->revs( VCP::Revs->new ) ;
    $self->parse_revml_file ;
+      ## Unlike normal repositories, we have to scan all this here
+      ## so that all files get extracted from the input so that
+      ## VCP::Source::metadb can access them.
 
-   $self->dest->sort_revs( $self->revs ) ;
+   $self->dest->handle_header( $self->{HEADER} )
+      if defined $self->{HEADER};
+}
 
-   my VCP::Rev $r ;
-   while ( $r = $self->revs->shift ) {
-      $self->get_rev( $r ) ;
-      $self->dest->handle_rev( $r ) ;
-   }
+
+sub get_source_file {
+   my $self = shift ;
+   my $r ;
+   ( $r ) = @_ ;
+
+   die "can't check out ", $r->as_string, "\n"
+      unless defined $r->is_base_rev || $r->action eq "add" || $r->action eq "edit";
+
+   return #VCP::RefCountedFile->new(
+      $self->_db_store_location(
+         'source_files',
+         $r->source_name,
+         $r->source_branch_id || "-",
+         $r->source_rev_id
+      )
+#   )
+   ;
+
+      ## Pass ownership to the caller so it will be cleaned up when the
+      ## caller is finished with it.
 }
 
 
 sub parse_revml_file {
-   my VCP::Source::revml $self = shift ;
+   my $self = shift ;
 
    my @stack ;
    $self->{STACK} = \@stack ;
+   $self->{HEADER_ENDED} = 0;
 
    my $char_handler = sub {
       my $expat = shift ;
       my $pelt = $stack[-1] ; ## parent element
       my $tag = $pelt->{NAME} ;
-      my $content = $pelt->{CONTENT} ;
-      if ( defined $content ) {
-	 if ( @$content && $content->[-1]->{TYPE} eq 'PCDATA' ) {
-	    $content->[-1]->{PCDATA} .= $_[0] ;
-	 }
-	 else {
-	    push @$content, { TYPE => 'PCDATA', PCDATA => $_[0] } ;
-	 }
-      }
+      $pelt->{TEXT} .= $_[0] if exists $pelt->{TEXT} && defined $pelt->{TEXT};
       my $sub = "${tag}_characters" ;
       $self->$sub( @_ ) if $self->can( $sub ) ;
    } ;
@@ -220,12 +337,17 @@ sub parse_revml_file {
 	       return ;
 	    }
 
-#print STDERR "<$tag>\n" ;
+            ## TODO: suss out "container" elements from the doctype.
 	    push @stack, {
 	       NAME => $tag,
-	       ATTRS => {@_},
-	       CONTENT => ! $self->can( "${tag}_characters" ) ? [] : undef,
+	       @_,
+	       ( $self->can( "${tag}_characters" )
+                  || 0 <= index "revml,rev,branch,branches,", $tag . ","
+               ) 
+                  ? ()
+                  : ( TEXT => "" ),
 	    } ;
+
 	    my $sub = "start_$tag" ;
 	    $self->$sub( @_ ) if $self->can( $sub ) ;
 	 },
@@ -242,18 +364,42 @@ sub parse_revml_file {
 	    $self->$sub( @_ ) if $self->can( $sub ) ;
 	    my $elt = pop @stack ;
 
-	    if ( @stack
-	       && $stack[-1]->{NAME} =~ /^rev(ml)?$/
-	       && defined $elt->{CONTENT}
-	       ) {
-#print STDERR "</$tag>\n" ;
-	       ## Save all the meta fields for start_content() or start_diff()
-	       if ( $tag eq 'label' ) {
-	          push @{$stack[-1]->{labels}}, $elt ;
-	       }
-	       else {
-		  $stack[-1]->{$tag} = $elt ;
-	       }
+	    if ( @stack ) {
+               if (
+                  exists $elt->{TEXT}
+                  && defined $elt->{TEXT}
+               ) {
+                  ## Save all the meta fields for start_content() or start_diff()
+                  if ( $tag eq 'label' ) {
+                     push @{$stack[-1]->{labels}}, $elt->{TEXT} ;
+                  }
+                  elsif ( $stack[-1]->{NAME} eq "revml" ) {
+                     die "Header field $tag after first rev\n"
+                        if $self->{HEADER_ENDED};
+                     ## ASSume none of these occur after first rev.
+                     $self->{HEADER}->{$tag} = $elt->{TEXT} ;
+                     if ( $tag eq "rev_root" ) {
+                        $self->rev_root( $elt->{TEXT} );
+                     }
+                  }
+                  else {
+                     $stack[-1]->{$tag} = $elt->{TEXT} ;
+                  }
+               }
+               else {
+                  ## It's a node with child nodes.
+                  delete $elt->{NAME};
+
+                  if ( $stack[-1]->{NAME} eq "revml" && $tag ne "rev" ) {
+                     die "Header field $tag after first rev\n"
+                        if $self->{HEADER_ENDED};
+                     ## ASSume none of these occur after first rev.
+                     $self->{HEADER}->{$tag} = $elt;
+                  }
+                  else {
+                     $stack[-1]->{$tag} = $elt;
+                  }
+               }
 	    }
 	 },
 
@@ -265,22 +411,11 @@ sub parse_revml_file {
 
 
 sub start_rev {
-   my VCP::Source::revml $self = shift ;
-
-   ## We now have all of the header info parsed, save it off
-
-   ## TODO: Demystify this hairy wart.  Better yet, simplify all the code
-   ## in this module.  It needs to decode the fields as they come in and
-   ## stick them in the header and the rev_meta 
-   for ( map(
-      $self->{STACK}->[-2]->{$_},
-      grep /^[a-z_0-9]+$/, keys %{$self->{STACK}->[-2]}
-   ) ) {
-      $self->{HEADER}->{$_->{NAME}} = $_->{CONTENT}->[0]->{PCDATA} ;
-   }
+   my $self = shift ;
 
    ## Make sure no older rev is lying around to confuse us.
    $self->{REV} = undef ;
+   $self->{HEADER_ENDED} = 1;
 }
 
 ## RevML is contstrained so that the diff and content tags are after all of
@@ -290,33 +425,44 @@ sub start_rev {
 ## member as well as opening a place to catch all of the data that gets
 ## extracted from the file.
 sub init_rev_meta {
-   my VCP::Source::revml $self = shift ;
+   my $self = shift ;
+   my ( $placeholder_type ) = @_;
 
    my $rev_elt = $self->{STACK}->[-2] ;
-   my VCP::Rev $r = VCP::Rev->new() ;
+   my $r = VCP::Rev->new() ;
    ## All revml tag naes are lc, all internal data member names are uc
 #require Data::Dumper ; print Data::Dumper::Dumper( $self->{STACK} ) ;
 
-   for ( grep /^[a-z_0-9]+$/, keys %$rev_elt ) {
-      if ( $_ eq 'labels' ) {
-         $r->labels(
-	    map $_->{CONTENT}->[0]->{PCDATA}, @{$rev_elt->{labels}}
-	 ) ;
+   for my $key ( grep /^[a-z_0-9]+$/, keys %$rev_elt ) {
+      if ( $key eq 'labels' ) {
+         $r->set_labels( $rev_elt->{labels} );
       }
       else {
          ## We know that all kids *in use today* of <rev> are pure PCDATA
 	 ## Later, we'll need sub-attributes.
 	 ## TODO: Flatten the element tree by preficing attribute names
-	 ## with, I dunno, say '_' or by adding '_attr' to them.
-	 my $out_key = $_ ;
-         $r->$out_key( $rev_elt->{$_}->{CONTENT}->[0]->{PCDATA} ) ;
+	 ## with '@'?.
+         $r->$key( $rev_elt->{$key} ) ;
       }
    }
 #require Data::Dumper ; print Data::Dumper::Dumper( $r ) ;
 
-   $r->work_path( $self->work_path( $r->name, $r->rev_id ) ) ;
+   if ( defined $placeholder_type ) {
+      $r->action( $placeholder_type );
+   }
+   else {
+      my $work_path =
+         $self->_db_store_location(
+            'source_files',
+            $r->name,
+            $r->branch_id || "-",
+            $r->rev_id
+         );
 
-   $self->mkpdir( $r->work_path ) ;
+      $self->{FILES}->{$r->id} = $work_path;
+
+      $self->mkpdir( $work_path ) ;
+   }
 
    $self->{REV} = $r ;
    return ;
@@ -324,34 +470,33 @@ sub init_rev_meta {
 
 
 sub start_delete {
-   my VCP::Source::revml $self = shift ;
+   my $self = shift ;
 
    $self->init_rev_meta ;
-   $self->{REV}->action( "delete" ) ;
-   ## Clear the work_path so that VCP::Rev doesn't try to delete it.
-   $self->{REV}->work_path( undef ) ;
+   $self->{REV}->set_action( "delete" ) ;
+   1;  ## prevent void context warning
 }
 
 
 sub start_move {
-   my VCP::Source::revml $self = shift ;
+   my $self = shift ;
 
    $self->init_rev_meta ;
-   $self->{REV}->action( "move" ) ;
-   ## Clear the work_path so that VCP::Rev doesn't try to delete it.
-   $self->{REV}->work_path( undef ) ;
+   $self->{REV}->set_action( "move" ) ;
    die "<move> unsupported" ;
 }
 
 
 sub start_content {
-   my VCP::Source::revml $self = shift ;
+   my $self = shift ;
 
    $self->init_rev_meta ;
 #require Data::Dumper ; print Data::Dumper::Dumper( $self->{REV} ) ;
    $self->{REV}->action( "edit" ) ;
-   $self->{WORK_NAME} = $self->{REV}->work_path ;
+   $self->{WORK_NAME} = $self->{FILES}->{$self->{REV}->id};
    $self->{UNDECODED_CONTENT} = "" ;
+
+   debug "writing $self->{WORK_NAME}" if debugging;
    sysopen $self->{WORK_FH}, $self->{WORK_NAME}, O_WRONLY | O_CREAT | O_TRUNC
       or die "$!: $self->{WORK_NAME}" ;
    ## The binmode here is to make sure we don't convert \n to \r\n and
@@ -362,49 +507,47 @@ sub start_content {
 
 
 sub content_characters {
-   my VCP::Source::revml $self = shift ;
-   if ( $self->{STACK}->[-1]->{ATTRS}->{encoding} eq "base64" ) {
+   my $self = shift ;
+   if ( $self->{STACK}->[-1]->{encoding} eq "base64" ) {
       $self->{UNDECODED_CONTENT} .= shift ;
       if ( $self->{UNDECODED_CONTENT} =~ s{(.*\n)}{} ) {
 	 syswrite( $self->{WORK_FH}, decode_base64( $1 ) )
 	    or die "$! writing $self->{WORK_NAME}" ;
       }
    }
-   elsif ( $self->{STACK}->[-1]->{ATTRS}->{encoding} eq "none" ) {
+   elsif ( $self->{STACK}->[-1]->{encoding} eq "none" ) {
 # print STDERR map( sprintf( " %02x=$_", ord ), $_[0] =~ m/(.)/gs ), "\n" ;
       syswrite $self->{WORK_FH}, $_[0]
          or die "$! writing $self->{WORK_NAME}" ;
    }
    else {
-      die "vcp: unknown encoding '$self->{STACK}->[-1]->{ATTRS}->{encoding}'\n";
+      die "unknown encoding '$self->{STACK}->[-1]->{encoding}'\n";
    }
    return ;
 }
 
 sub end_content {
-   my VCP::Source::revml $self = shift ;
+   my $self = shift ;
    
    if ( length $self->{UNDECODED_CONTENT} ) {
       syswrite( $self->{WORK_FH}, decode_base64( $self->{UNDECODED_CONTENT} ) )
 	 or die "$! writing $self->{WORK_NAME}" ;
    }
    close $self->{WORK_FH} or die "$! closing $self->{WORK_NAME}" ;
-
-   if ( $self->none_seen ) {
-#require Data::Dumper ; print Data::Dumper::Dumper( $self->{HEADER} ) ;
-      $self->dest->handle_header( $self->{HEADER} ) ;
-   }
-
-   $self->seen( $self->{REV} ) ;
 }
 
 sub start_delta {
-   my VCP::Source::revml $self = shift ;
+   my $self = shift ;
 
    $self->init_rev_meta ;
    my $r = $self->{REV} ;
    $r->action( 'edit' ) ;
-   $self->{WORK_NAME} = $self->work_path( $r->name, 'delta' ) ;
+   $self->{WORK_NAME} = $self->_db_store_location(
+      'source_files',
+      $r->name,
+      $r->branch_id || "-",
+      'delta'
+   ) ;
    sysopen $self->{WORK_FH}, $self->{WORK_NAME}, O_WRONLY | O_CREAT | O_TRUNC
       or die "$!: $self->{WORK_NAME}" ;
    ## See comment in start_content :)
@@ -418,52 +561,49 @@ sub start_delta {
 *delta_characters = \&content_characters ;
 
 sub end_delta {
-   my VCP::Source::revml $self = shift ;
+   my $self = shift ;
 
    close $self->{WORK_FH} or die "$! closing $self->{WORK_NAME}" ;
 
 #print STDERR `hexdump -cx $self->{WORK_NAME}` ;
 
-   my VCP::Rev $r = $self->{REV} ;
+   my $r = $self->{REV} ;
+   my $abs_name = $self->rev_root . "/" . $r->name;
+   return if $abs_name !~ $self->{FILESPEC_RE};
 
-   ## Delay sending handle_header to dest until patch succeeds.
-   my $is_first = $self->none_seen ;
+   my $bv_r = $self->queued_rev( $r->previous_id ) ;
+   $bv_r = $self->queued_rev( $bv_r->previous_id )
+       while $bv_r && ! exists $self->{FILES}->{$bv_r->id};
 
-   my VCP::Rev $saw = $self->seen( $r ) ;
+   die "No original content to patch for ", $r->as_string
+      unless defined $bv_r;
 
-   die "No original content to patch for ", $r->name, ",",
-      " revision ", $r->rev_id
-      unless defined $saw ;
+   my $source_fn = $self->{FILES}->{$bv_r->id};
+   my $dest_fn   = $self->{FILES}->{$r->id};
 
    if ( -s $self->{WORK_NAME} ) {
-      ## source fn, result fn, patch fn
-      vcp_patch( $saw->work_path, $r->work_path, $self->{WORK_NAME} );
+      vcp_patch( $source_fn, $dest_fn, $self->{WORK_NAME} );
       unless ( $ENV{VCPNODELETE} ) {
-         unlink $self->{WORK_NAME} or warn "$! unlinking $self->{WORK_NAME}\n" ;
+         unlink $self->{WORK_NAME}
+            or pr "$! unlinking $self->{WORK_NAME}\n" ;
       }
    }
    else {
       ## TODO: Don't assume working link()
-      debug "vcp: linking ", $saw->work_path, ", ", $r->work_path
-         if debugging $self ;
+      debug "linking '$source_fn', '$dest_fn'"
+         if debugging ;
 
-      link $saw->work_path, $r->work_path
-         or die "vcp: $! linking ", $saw->work_path, ", ", $r->work_path
+      link $source_fn, $dest_fn
+         or die "$!: linking '$source_fn', '$dest_fn'";
    }
-
-   if ( $is_first ) {
-#require Data::Dumper ; print Data::Dumper::Dumper( $self->{HEADER} ) ;
-      $self->dest->handle_header( $self->{HEADER} ) ;
-   }
-
 }
 
 
 ## Convert ISO8601 UTC time to local time since the epoch
 sub end_time {
-   my VCP::Source::revml $self = shift ;
+   my $self = shift ;
 
-   my $timestr = $self->{STACK}->[-1]->{CONTENT}->[0]->{PCDATA} ;
+   my $timestr = $self->{STACK}->[-1]->{TEXT};
    ## TODO: Get parser context here & give file, line, and column. filename
    ## and rev, while we're scheduling more work for the future.
    confess "Malformed time value $timestr\n"
@@ -471,7 +611,7 @@ sub end_time {
    confess "Non-UTC time value $timestr\n" unless substr $timestr, -1 eq 'Z' ;
    my @f = split( /\D/, $timestr ) ;
    --$f[1] ; # Month of year needs to be 0..11
-   $self->{STACK}->[-1]->{CONTENT}->[0]->{PCDATA} = timegm( reverse @f ) ;
+   $self->{STACK}->[-1]->{TEXT} = timegm( reverse @f ) ;
 }
 
 # double assign => avoid used once warning
@@ -487,28 +627,33 @@ sub end_time {
 ## some kind of special pass-through mode for that.
 
 sub end_digest {
-   my VCP::Source::revml $self = shift ;
+   my $self = shift ;
 
    $self->init_rev_meta unless defined $self->{REV} ;
-   my $r = $self->{REV} ;
 
-   my $original_digest = $self->{STACK}->[-1]->{CONTENT}->[0]->{PCDATA} ;
-   my $d = Digest::MD5->new() ;
+   my $r = $self->{REV} ;
+   my $abs_name = $self->rev_root . "/" . $r->name;
+   return if $abs_name !~ $self->{FILESPEC_RE};
+
+   my $original_digest = $self->{STACK}->[-1]->{TEXT};
+
+   my $work_path = $self->{FILES}->{$r->id};
 
    if ( $r->is_base_rev ) {
-      $self->dest->handle_header( $self->{HEADER} ) if $self->none_seen ;
-
       ## Don't bother checking the digest if the destination returns
       ## FALSE, meaning that a backfill is not possible with that destination.
       ## VCP::Dest::revml does this.
-      return unless $self->dest->backfill( $r ) ;
-      my VCP::Rev $saw = $self->seen( $r ) ;
-      warn "I've seen ", $r->name, " before" if $saw ;
-   }
-   my $work_path = $r->work_path ;
+      if ( $self->{HEADER} ) {
+         $self->dest->handle_header( $self->{HEADER} );
+         $self->{HEADER} = undef;
+      }
 
+      return unless $self->dest->backfill( $r, $work_path );
+   }
+
+   my $d = Digest::MD5->new() ;
    sysopen F, $work_path, O_RDONLY
-      or die "vcp: $! opening '$work_path' for digestion\n" ;
+      or die "$! opening '$work_path' for digestion\n" ;
    ## See comment for binmode in start_content :)
    binmode F;
    $d->addfile( \*F ) ;
@@ -528,25 +673,33 @@ sub end_digest {
       ) ;
 
       link $work_path, $reject_file_path 
-         or die "vcp: digest check failed for ", $r->as_string,
-	 "\nvcp: failed to leave copy in '$reject_file_path': $!\n" ;
+         or die "digest check failed for ", $r->as_string, "\n",
+	 "   failed to leave copy in '$reject_file_path': $!\n" ;
 
-      die "vcp: digest check failed for ", $r->as_string,
-	 "\nvcp: copy left in '$reject_file_path'\n",
-         "got      digest: $reconstituted_digest\n",
-         "expected digest: $original_digest\n";
+      die "digest check failed for ", $r->as_string, "\n",
+	 "   copy left in '$reject_file_path'\n",
+         "   got      digest: $reconstituted_digest\n",
+         "   expected digest: $original_digest\n";
    }
+}
+
+
+sub end_placeholder {
+   my $self = shift ;
+   $self->init_rev_meta( "placeholder" );
 }
 
 
 ## Having this and no sub rev_characters causes the parser to accumulate
 ## content.
 sub end_rev {
-   my VCP::Source::revml $self = shift ;
+   my $self = shift ;
 
-   $self->revs->add( $self->{REV} )  unless $self->{REV}->is_base_rev ;
+   BUG "rev_root not set" unless defined $self->rev_root;
+   my $abs_name = $self->rev_root . "/" . $self->{REV}->name;
+   return if $abs_name !~ $self->{FILESPEC_RE};
 
-   ## Release this rev.
+   $self->queue_rev( $self->{REV} );
    $self->{REV} = undef ;
 }
 

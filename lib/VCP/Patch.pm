@@ -109,8 +109,6 @@ vary.
 
 =back
 
-=back
-
 =head1 Functions
 
 =over
@@ -138,7 +136,11 @@ Will die on error, always returns true.
 sub vcp_patch {
    my ( $source_fn, $result_fn, $patch_fn ) = @_ ;
 
-   debug "patching $source_fn -> $result_fn using $patch_fn" if debugging ;
+   Carp::confess "undefined source_fn" unless defined $source_fn;
+   Carp::confess "undefined result_fn" unless defined $result_fn;
+   Carp::confess "undefined patch_fn"  unless defined $patch_fn;
+
+   debug "vcp: patching $source_fn -> $result_fn using $patch_fn" if debugging ;
 
    open PATCH,  "<$patch_fn"     or croak "$!: $source_fn" ;
    open SOURCE, "<$source_fn"    or croak "$!: $source_fn" ;
@@ -156,11 +158,11 @@ sub vcp_patch {
       my ( $fchar, $patch_line ) = ( $1, $2 );
       if ( $fchar eq '@' ) {
          $patch_line =~ /^\@ -(\d+)(?:,\d+)? [+-]\d+(,\d+)? \@\@/
-             or croak "Can't parse line: '$fchar$patch_line'.";
+             or croak "Can't parse diff line: '$fchar$patch_line'.";
          my $first_source_line = $1;
          while ( $source_pos < $first_source_line ) {
             my $source_line = <SOURCE>;
-            croak "Ran off end of source file at line $source_pos"
+            croak "Ran off end of source file $source_fn at line $source_pos"
                unless defined $source_line;
             print RESULT $source_line;
             ++$source_pos;
@@ -168,7 +170,7 @@ sub vcp_patch {
       }
       elsif ( $fchar eq '-' ) {
          my $source_line = <SOURCE>;
-         croak "Ran off end of source file at line $source_pos"
+         croak "Ran off end of source $source_fn at line $source_pos"
             unless defined $source_line;
          $source_line =~ s/[\r\n]+\z//;
          $patch_line =~ s/[\r\n]+\z//;
@@ -176,14 +178,17 @@ sub vcp_patch {
             $source_line =~ s/([\000-\037])/sprintf "\\x%02x", ord $1/ge;
             $patch_line  =~ s/([\000-\037])/sprintf "\\x%02x", ord $1/ge;
             croak "Patch line disagrees with source line $source_pos:\n",
-               "source:\"", $source_line, "\"\n",
-               "patch :\"", $patch_line , "\"\n";
+               "   source file: '$source_fn'\n",
+               "   patch file : '$patch_fn'\n",
+               "   result file: '$result_fn'\n",
+               "   source line: \"$source_line\"\n",
+               "   patch  line: \"$patch_line\"\n";
          }
          ++$source_pos;
       }
       elsif ( $fchar eq ' ' ) {
          my $source_line = <SOURCE>;
-         croak "Ran off end of source file at line $source_pos"
+         croak "Ran off end of source file $source_fn at line $source_pos"
             unless defined $source_line;
          print RESULT $source_line;
          ++$source_pos;

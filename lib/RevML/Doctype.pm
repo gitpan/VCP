@@ -36,9 +36,6 @@ use XML::Doctype ;
 
 use base 'XML::Doctype' ;
 
-use fields (
-) ;
-
 use vars qw( $VERSION ) ;
 
 $VERSION = 0.1 ;
@@ -50,16 +47,28 @@ Creates an instance.
 
 =cut
 
+my $highest_doctype_pm_version;
+
 sub _highest_doctype_pm_version {
-   my $ver = 0 ;
-   for ( @INC ) {
-      for ( glob "$_/RevML/Doctype/*.pm" ) {
-	 next unless s{.*/v([\d_]+)\.pm$}{$1} ;
-	 tr/_/./ ;
-	 $ver = $_ if $_ > $ver;
-      } 
+   return $highest_doctype_pm_version if defined $highest_doctype_pm_version;
+
+   $highest_doctype_pm_version = 0 ;
+
+   unless ( grep defined, @_ ) {
+      @_ = map glob( "$_/v*.pm" ),
+         grep -d,
+         map "$_/RevML/Doctype",
+         grep !ref,
+         @INC;
    }
-   return $ver ;
+
+   for ( @_ ) {
+      next unless s{.*RevML/Doctype/v([\d_]+)\.pm$}{$1}i ;
+      tr/_/./ ;
+      $highest_doctype_pm_version = $_
+         if $_ > $highest_doctype_pm_version;
+   }
+   return $highest_doctype_pm_version;
 }
 
 
@@ -67,16 +76,16 @@ sub new {
    my $class = shift ;
    $class = ref $class || $class ;
 
-   my ( $dtd_spec ) = @_ ;
+   my ( $dtd_spec, @doctype_modules ) = @_ ;
 
-   $dtd_spec = _highest_doctype_pm_version
+   $dtd_spec = _highest_doctype_pm_version @doctype_modules
       if ! defined $dtd_spec || $dtd_spec eq 'DEFAULT' ;
 
    die "No RevML::Doctype found, use -dtd option or install a RevML::DocType::vXXX module\n"
       unless $dtd_spec ;
 
    ## Try to load $self from a file, or bless one ourself and parse a DTD.
-   my RevML::Doctype $self ;
+   my $self ;
 
    if ( $dtd_spec =~ /^\d+(?:\.\d+)*$/ ) {
       ## TODO: Make the save format provide a new(), or be data-only.
@@ -89,10 +98,7 @@ sub new {
    }
    else {
       ## Read in the DTD from a file.
-      {
-	 no strict 'refs' ;
-	 $self = bless [ \%{"$class\::FIELDS"} ], $class ;
-      }
+      $self = fields::new( $class );
 
       ## Read in the file instead of referring to an external entitity to
       ## get more meaningful error messages.  It's short.
@@ -128,7 +134,7 @@ lib/RevML/Doctype/ if that directory exists, then in ./ if not.
 =cut
 
 sub save_as_pm {
-   my RevML::Doctype $self = shift ;
+   my $self = shift ;
 
    my ( $out_spec ) = @_ ;
    ## TODO: Try to prevent accidental overwrites by looking for
@@ -172,7 +178,7 @@ sub save_as_pm {
 
 
 sub version {
-   my RevML::Doctype $self = shift ;
+   my $self = shift ;
    return $self->element_decl( 'revml' )->attdef( 'version' )->default ;
 }
 

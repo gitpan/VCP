@@ -12,16 +12,16 @@ VCP::Maintenance - VCP code maintenance tips & tricks
 
 =head1 DESCRIPTION
 
-=head2 Teh distribution hierarchy
+=head2 The distribution hierarchy
 
 As untarred, the distribution hierarchy looks like (some files not
-show for brevity):
+shown for brevity):
 
    VCP-x.yy/
    +--- Makefile.PL     ## Generates the Makefile
    +--- MANIFEST        ## what files to ship, built with `make manifest`
    +--- MANIFEST.SKIP   ## what filenames `make manifest` should ignore
-   +--- CHANGES         ## A detailed summart of all edits
+   +--- CHANGES         ## A detailed summary of all edits
    +--- TODO            ## Things we can't get to quite yet
    +--- LICENSE
    +--- README
@@ -31,7 +31,7 @@ show for brevity):
    |  +---- gentrevml   ## builds RevML files for the test suite
    |  +---- hexdump.pl  ## dumps files in hex, a debugging aid
    |
-   +--+ lib/            ## All modules that comprize VCP itself
+   +--+ lib/            ## All modules that comprise VCP itself
    |  +--- VCP.pm       ## Drives the VCP process
    |  +--- *.pod        ## Supplemental documentation
    |  +--- Plugin.pm    ## Base class for all sources & destinations
@@ -100,23 +100,33 @@ Some environment variables that are useful in debugging:
 
 =over
 
+=item VCPDEBUG
+
+Set this to a TRUE value to force C<VCP::*> modules
+emit debugging messages.  
+
+See also L<VCP::Debug|VCP::Debug> for more details.
+
 =item VCPNODELETE
 
 Set this to C<yes> to tell C<vcp> I<not> to delete it's working
 directories.  This allows you to take a look at them and see what
 the source and dest command lines saw.
 
-=item IPCRUNDEBUG
+=item IPCRUN3DEBUG
 
-Set this to some number from 0..10 to see how C<vcp> (via L<IPC::Run|IPC::Run>)
-is treating it's subprocesses.
+Set this to some number from 0..10 to see how C<vcp> (via
+L<IPC::Run3|IPC::Run3>) is treating it's subprocesses.
 
-=item VCPDEBUG
+=item VCPP4LICENSE
 
-Set this to a regular expression to control what modules within C<VCP::*>
-emit debugging messages.
-
-See also L<VCP::Debug|VCP::Debug> for more details.
+If this is present and pointing to a readable file when a p4 daemon is
+started via vcp, a symlink will be created in the (possibly newly
+created) p4root directory to point to the p4 license file pointed to
+by VCPP4LICENSE.  The 'make' target test_all_p4_versions will cycle
+through each version of p4 and p4d contained in the 'p4versions'
+directory, in both unlicensed and (if VCPP4LICENSE present) licensed
+mode.
 
 =back
 
@@ -218,7 +228,7 @@ before the first test C<sub> you want to run, and a line like
 
    sub { last },
 
-after the last one.  This is especially important
+after the last one.  This is especially important.
 
 =item 4. Test line numbers
 
@@ -232,14 +242,10 @@ number in the C<for @tests> loop, not the line number of the test.
 
 =item 5.
 
-If you want to enable C<vcp> or L<IPC::Run> debugging (see
+If you want to enable C<vcp> or L<IPC::Run3> debugging (see
 L<VCP::Debug>, too), you can put a
 
-   local $ENV{VCPDEBUG} = '.*';
-
-or
-
-   local $ENV{IPCRUNDEBUG} = 1;  ## 1..10
+   local $ENV{IPCRUN3DEBUG} = 1;  ## 1..10
 
 in the appropriate C<sub {...}> and it won't cause all the other tests
 to spew a lot of noise.
@@ -263,13 +269,9 @@ The L<VCP|VCP> module (C</lib/VCP.pm>)
 
 =head2 Updating the RevML DTD
 
-There is one command used for maintainance: C<save_dtd>. This should not be
-necessary in the normal course of events; it's only needed if the RevML DTD has
-changed.  Here's how it looks:
-
-This outputs the DTD to stdout if C<E<lt>howE<gt>> is C<->, or to a file named
-like C<v0_28.pm> if C<E<lt>howE<gt>> looks like a version number (0.28 in this
-case), or in a module named C<E<lt>howE<gt>> if C<E<lt>howE<gt>> contains '::'.
+Run the command C<compile_dtd>, which by default will look for the
+file 'revml.dtd'.  This should be done each time the dtd changes.
+Optionally you may pass in a dtd file name as the argument to C<compile_dtd>.
 
 The generated file is placed in C<./lib/RevML/Doctype/> or C<./RevML/Doctype/>
 or C<./>, whichever is found first.  No directories will be created.

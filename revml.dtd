@@ -1,7 +1,8 @@
 <!-- DTD for RevML (see <revml> version attdef for version)
      Authors: Barrie Slaymaker   <barries@slaysys.com>
-    .         Greg Kroah-Hartman <greg@kroah.com>
+              Greg Kroah-Hartman <greg@kroah.com>
               Sean McCune        <sean@sean-mccune.com>
+              John Fetkovich     <fetko@slaysys.com>
 -->
 
 <!-- The order is specified for the tags so that they are in an appropriate
@@ -10,6 +11,15 @@
      object data.  Import utilities *must* cache all necessary metadata
      regardless of order of occurence, then may discard it once the
      <content> is seen.
+
+      To compile a DTD in to a perl module:
+
+          vcp revml X-dtd *this*file* X-save-doctype
+
+      where "X" is a "-" (silly XML comments).  This will write
+      ./lib/RevML/Doctype/vV_VV_.pm where V_VV is the underscorified
+      version #FIXED attribute from the revml ENTITY definition below.
+
 -->
 
 <!ELEMENT revml
@@ -18,14 +28,20 @@
         rep_type,
         rep_desc,
         comment?,
-        file_count?,
-        ((branch_map_id,branch_map_sn)|branch*)?,
 	rev_root,
+        branches?,
         rev*
     )
 >
+
+    <!--
+      NOTE!! When changing the dtd, this version number should be
+      changed also.  Any change also requires re-compiling the dtd
+      with bin/compile_dtd.  For more info run 'vcp help Maintenance'
+      and read the section titled 'Updating the RevML DTD.'
+    -->
     <!ATTLIST   revml
-        version     CDATA   #FIXED   "0.29"
+        version     CDATA   #FIXED   "0.35"
     >
 
 <!ELEMENT rep_type (#PCDATA) >
@@ -42,88 +58,71 @@
 
     -->
 
-<!ELEMENT file_count (#PCDATA) >
-    <!-- How many files to be processed.  This is because we can't possibly
-         load a large revml file in to memory, yet it's nice for an import
-         utility to be able to display a % done progress bar.  There is no
-         semantic constraint on this number: it must only be used for
-         progress indication, and may be any nonnegative integer value.
-         It may also be wrong, and import utilities must still function
-         correctly but give a warning.
-     -->
-
-<!ELEMENT branch_map_id (#PCDATA) >
-    <!-- Required in all revml files that do not contain <branch> elements but
-    do contain <branch_id> elements.  Also required in branch map files.
-    -->
-
-<!ELEMENT branch_map_sn (#PCDATA) >
-    <!-- Indicates the serial number of the branch map.  This is required
-         in all revml files that contain the <branch_map> tag.  It is used
-         to detect the use of different branch mappings between the import
-         and export utilities.
-    -->
-
-<!ELEMENT branch
-    (branch_id, cvs_branch_id?, p4_branch_id?, sourcesafe_branch_id?)
->
-    <!-- <branch> elements declare names for a branch in different
-         repositories.  This is provisional.  The mapping of branches
-         between foreign repositories is not designed yet.
-         A set of <branch> elements defines a mapping of branches
-         from one repository to another.  It may be incorporated in the
-         same revml file as the revision data, or it may be defined
-         externally, in which case it must be visible to both the
-         import and the export utilities.
-
-         In particular, there is a cohesive concept of a branch
-         across multiple files in some products but not in others.
-
-         Whether or not and if so, how, we deal with this is going to
-         wait until we get to some real implementations and encounter
-         the devil in the details.
-
-         Among other things, we probably need a branchml DTD for
-         branch mappings that are separate.  We may also need facilities
-         for split branch mappings: cvs_branch -> branch_id in one
-         file, and branch_id -> p4_branch in another file.
-
-         The that DTD must be included in the revml DTD so that branch
-         mappings can be shipped along in a single file.
-    -->
-
-<!ELEMENT branch_id         (#PCDATA) >
-    <!-- cvs:      <branch_id>r_1_3_b</branch_id>
-         p4:       <branch_id>devel</branch_id>
-         The contents of this element is used to identify the branch being
-         referred to by the export utility.  When in a <branch> element
-         it's contents will usually be duplicated in a vendor-specific
-         branch tag.
-    -->
-
-<!ELEMENT cvs_branch_id        (#PCDATA) >
-    <!-- Typically a rev tag -->
-
-<!ELEMENT p4_branch_id         (#PCDATA) >
-<!ELEMENT sourcesafe_branch_id (#PCDATA) >
-
 <!ELEMENT rev_root (#PCDATA|char)* >
     <!-- The root of the tree that was extracted to RevML.  This
          is usually the source file spec up to (but not including) the
 	 first component that does not contain a wildcard.
+
+         This comes before branches because it's needed to modify
+         branches, specifically the p4_branch_spec's View field.  That's
+         a theoretical issue as implemented, but it's nice to have
+         things in the safest, most mnemonic order, I think.
     -->
+
+<!ELEMENT branch_id         (#PCDATA) >
+    <!-- cvs:      <branch_id>r_1_3_b</branch_id>
+         p4:       <branch_id>//depot/foo/devel</branch_id>
+
+         The contents of this element is used to identify the branch being
+         branch being exported.
+    -->
+
+<!ELEMENT p4_branch_spec (#PCDATA|char)* >
+    <!-- If the source repo was p4, then all branch specs with branch ids
+         used in the export are included, one per <branch> tag.  This may
+         be parsed by the destination (see the subroutines
+         VCP::Utils::p4->{parse,build}_p4_form()) or submitted directly
+         to the destination p4 repository.
+
+    -->
+
 
 <!ELEMENT rev
     (
         name,
+        source_name,
+        source_filebranch_id,
+        source_repo_id,
 	(
-	    (type,rev_id,change_id?,digest)
+	    (
+                type,
+                (branch_id,source_branch_id)?,
+                rev_id,
+                source_rev_id,
+                (change_id,source_change_id)?,
+                digest
+            )
+	    |(
+                type?,
+                (branch_id,source_branch_id)?,
+                rev_id,
+                source_rev_id,
+                (change_id,source_change_id)?,
+	        time?,
+	        mod_time?,
+	        user_id?,
+                label*,
+	        comment?,
+                previous_id,
+                (branch_creation|clone|placeholder)
+            )
 	    |(
                 type,
 	        (cvs_info|p4_info|source_safe_info|pvcs_info)?,
-	        branch_id?,
+	        (branch_id,source_branch_id)?,
 	        rev_id,
-	        change_id?,
+                source_rev_id,
+	        (change_id,source_change_id)?,
 	        time,
 	        mod_time?,
 	        user_id,
@@ -131,14 +130,15 @@
 	        label*,
 	        lock?,
 	        comment?,
-	        (move|((content|(base_name?,base_rev_id,delta)),digest))
+	        (move|(previous_id?,(content|delta),digest))
 	    )
 	    |(
                 type?,
 	        (cvs_info|p4_info|source_safe_info|pvcs_info)?,
-	        branch_id?,
+	        (branch_id,source_branch_id)?,
 	        rev_id?,
-	        change_id?,
+                source_rev_id?,
+	        (change_id,source_change_id)?,
 	        time?,
 	        mod_time?,
 	        user_id?,
@@ -146,10 +146,19 @@
 	        label*,
 	        lock?,
 	        comment?,
+                previous_id?,
 	        delete
 	    )
 	)
     ) >
+    <!ATTLIST rev
+        id          CDATA         #REQUIRED
+    >
+    <!-- each <rev> must have a unique identifier, usually the name
+         and revision number, though the precise format depends on
+         the source repository.  The id should be derived from the
+         metadata in a repeatable fashion.
+    -->
 
     <!-- A few words about the digest, content, and delta elements:
 
@@ -172,16 +181,9 @@
 	 <rev_id> revision of <name> should be recovered from the target
 	 repository and then checked against the <digest> field.
 
-	 The <base_name> is optional and is assumed to be the same as
-	 <name> if not present.  <base_rev_id> could be made optional someday,
-	 too.  These are provided so that branching may be indicated and
-	 so that the RevML reader does not need to perform revision number
-	 math, respectively.
+         <previous_id> contains the id string of the revision before this
+         one.
 
-	 Yes, <base_name> and <base_rev_id> could have been attributes
-	 of <delta>.  They're not since they contain metadata, and I've
-	 been trying to limit the use of attributes to describing
-	 encodings, etc.
     -->
 
     <!-- The reason the <delete> variant is broken out is that VSS
@@ -189,6 +191,9 @@
          per revision.  So, a delete can have some info in it for
          other SCMs, but will be mostly empty for VSS.
     -->
+
+    <!-- The second variant (optional type, no content/delta/delete) is
+         for marking branch points using placeholder revs -->
 
     <!-- We will add repository_... tags as needed to carry along all necessary
          repository specific information without alteration.
@@ -207,12 +212,11 @@
 <!ELEMENT type          (#PCDATA) >
     <!-- 'text' or 'binary' -->
 
-<!-- Product specific tags.  These are only used when importing data in
+<!-- Product specific tags.  These are used when importing data in
      to the same type of repository it was exported from.
 -->
 
 <!ELEMENT p4_info           (#PCDATA|char)* >
-    <!-- No need for rev_id here, it's in the main section -->
 
 <!ELEMENT cvs_info          (#PCDATA|char)* >
 
@@ -275,8 +279,7 @@
         encoding     (none|base64)  #REQUIRED
     >
 
-<!ELEMENT base_name (#PCDATA|char)* >
-<!ELEMENT base_rev_id (#PCDATA) >
+<!ELEMENT previous_id (#PCDATA) >
 
 <!ELEMENT content (#PCDATA|char)* >
     <!ATTLIST content
@@ -298,3 +301,28 @@
 	 code containing a hexadecimal representation of the character code
 	 as string like "0x0c" (that for a ^L or form feed).
     -->
+
+
+<!--
+  The following source_* fields are intended to keep the corresponding
+  fields without 'source_' in VCP all the way through to the
+  destination unchanged for making labels and logging.
+-->
+
+<!ELEMENT source_name          (#PCDATA|char)* >
+
+<!ELEMENT source_rev_id        (#PCDATA) >
+
+<!ELEMENT source_change_id     (#PCDATA) >
+
+<!ELEMENT source_branch_id     (#PCDATA) >
+
+<!--
+  These fields are similar in purpose to above, but don't have
+  directly corresponding analogues without the 'source_' prefix.
+-->
+
+<!ELEMENT source_filebranch_id (#PCDATA) >
+
+<!ELEMENT source_repo_id       (#PCDATA) >
+

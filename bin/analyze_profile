@@ -1,0 +1,312 @@
+#!/usr/local/bin/perl -w
+
+use strict;
+use POSIX "floor";
+
+# any commands in this list will have timings calculated for their sub-commands also.
+my @do_sub_commands = ( qw(p4) );
+#my @do_sub_commands = ();
+
+
+# sum numbers found in arguments (recursively), which may be:
+# scalars, lists, list refs, or hash refs (values of hash are summed)
+# dies if anything else encountered.
+sub sum {
+   my $total = 0;
+
+   for(@_) {
+      if( ! ref ) {
+         die "'$_' is not a number" unless /^[0-9.]+/ && ( /\./g ) <= 1;
+         $total += $_ ;
+      }
+      elsif( ref eq "ARRAY" ) {
+         $total += sum( @$_ );
+      }
+      elsif( ref eq "HASH" ) {
+         $total += sum( values %$_ );
+      }
+      else {
+         die "can't sum a " . ref() . " reference.";
+      }
+   }
+
+   return $total;
+}
+
+sub test_sum {
+   my @list = ( 2, 3, 4 );
+   my %h = ( a => 1, b => 2, c => 3 );
+
+   print "\n";
+   print sum( 0, 1, 2, 3, 4, 5 ), "\n";
+   print sum( @list ), "\n";
+   print sum( \@list ), "\n";
+   print sum( \@list, 1 ), "\n";
+   print sum( \@list, @list ), "\n";
+   print sum( \%h ), "\n";
+   print sum( \%h, 1 ), "\n";
+   print sum( \%h, \@list ), "\n";
+   print sum( \%h, \@list, 3 ), "\n";
+}
+
+
+
+
+my %perl_times;
+my %os_times;
+my %overhead_times;
+my %run_counts;
+my @stack;
+
+
+while (<>) {
+   chomp;
+
+   my @f = split;
+
+   if( @f < 3 ) {
+      warn "not enough fields on line $. of $ARGV\n";
+      next;
+   }
+
+   my $time = $f[0];
+   my $what = $f[1];
+   if( $what !~ /^(BEG|END|ELA)$/ ) {
+      warn "line $. of profile log was not a BEG, END or ELA marker\n";
+      next;
+   }
+
+   #--------------------
+   # get parts of command line
+
+   my %this_data;
+   my %subcmd_data;
+
+   $this_data{time} = $time;
+   $this_data{what} = $what;
+
+   my $command = $f[2];
+
+   shift @f for(1..3);
+
+   $this_data{command} = $command;
+
+   #--------------------
+   # if we want detail profiling on the sub-commands of this command,
+   # figure out what the sub-command is, and add its timings.
+   my $subcommand;
+   if ( grep { $_ eq $command } @do_sub_commands ) {
+      if( $what eq "ELA" ) {
+         while( @f ) {
+            if( $f[0] =~ /^-/ ) {
+               shift @f;  # shift off the option flag
+               if( $f[0] eq '-' || $f[0] !~ /^-/ ) {
+                  shift @f; # shift off the parameter
+               }
+            }
+            else {
+               $subcommand = shift @f;
+               last;
+            }
+         }
+      }
+      else {
+         $subcommand = shift @f;
+      }
+
+      die "??? no subcommand found for $command '$_'\n"
+         unless defined $subcommand;
+   }
+
+   if( defined $subcommand ) {
+      $subcmd_data{time} = $time;
+      $subcmd_data{what} = $what;
+      $subcmd_data{command} = "$command $subcommand";
+   }
+
+   #--------------------
+   # add up times
+
+   if( $this_data{what} eq "BEG" ) {
+      push @stack, \%this_data;
+      $run_counts{ $this_data{command} }++ ;
+      if( keys %subcmd_data ) {
+         push @stack, \%subcmd_data ;
+         $run_counts{ $subcmd_data{command} }++ ;
+      }
+   }
+   elsif( $this_data{what} eq "ELA" ) {
+      $os_times  { $this_data{command} } += $this_data{time};
+      $os_times  { $subcmd_data{command} } += $subcmd_data{time}
+         if( defined $subcommand ) ;
+   }
+   else {   # 'END'
+      if( defined $subcommand ) {
+         my %prev_data = %{ pop @stack };
+         die "END command did not match BEG command at top of stack.\n"
+            unless $subcmd_data{command} eq $prev_data{command};
+         my $elapsed = $subcmd_data{time} - $prev_data{time};
+         $perl_times{ $subcmd_data{command} } += $elapsed;
+      }
+
+      my %prev_data = %{ pop @stack };
+      die "END command did not match BEG command at top of stack.\n"
+         unless $this_data{command} eq $prev_data{command};
+      my $elapsed = $this_data{time} - $prev_data{time};
+      $perl_times{ $this_data{command} } += $elapsed;
+   }
+}
+
+die "No input data\n" unless $.;
+
+
+
+my $total_key = "~TOTAL"; # sorts last
+my $os_times_present = keys %os_times;
+
+$perl_times{$total_key} = sum \%perl_times;
+$os_times{$total_key}   = sum \%os_times
+   if $os_times_present;
+
+## print "total perl times: $perl_times{$total_key}\n";
+## print "total os times: $os_times{$total_key}\n";
+
+## print join "", map { sprintf "%10.6f seconds (via perl) in $_ \n", $perl_times{$_} } sort keys %perl_times;
+## print join "", map { sprintf "%10.6f seconds (via time) in $_ \n", $os_times  {$_} } sort keys %os_times;
+
+
+my @keys_both = grep { exists $os_times{$_} } keys %perl_times;
+$overhead_times{$_} = $perl_times{$_} - $os_times{$_} for @keys_both;
+
+## print join "", map { sprintf "%10.6f seconds  overhead  in $_\n", $perl_times{$_} - $os_times{$_} } sort @keys_both;
+
+my %all_unique_keys = map { $_ => 1 } sort( keys %perl_times, keys %os_times );
+$all_unique_keys{'~'} = 1; # separator before TOTAL
+
+
+sub percentage {
+   my ($num, $denom) = @_;
+
+   return floor ( .5 + $num / $denom * 100 ) ;
+}
+
+# args:
+# 1. timing hash ref
+# 2. hash key
+sub print_timing {
+   my ($h, $k) = @_;
+   die unless $h && $k;
+
+   # print timing
+   my $timing;
+   if( defined $h->{$k} ) {
+      $timing = $h->{$k};
+      printf "%6.2f ", $timing;
+   }
+   else {
+      print "       ";
+   }
+      
+   # if this is a subcommand, print percent that subcommand is of command
+   if( defined $timing && $k =~ /(\S+)\s+\S+/ ) {
+      # print percentage of total command time if this is a subcommand
+      printf " %2d%% ", percentage $h->{$k}, $h->{$1} ;
+   }
+   else {
+      printf "     ";
+   }
+
+   # print timing per each commmand
+   if( defined $timing && exists $run_counts{$k} ) {
+      my $time_each = $timing / $run_counts{$k} ;
+      printf "%6.3f ", $time_each;
+   }
+   else {
+      print "       ";
+   }
+
+   print "| ";
+}
+
+my $max_key_len = 0;
+for( keys %all_unique_keys ) {
+   $max_key_len = length if length > $max_key_len;
+}
+
+
+## ---------------------
+## output
+
+sub underline {
+   print "-" for 1..$max_key_len;
+   print "-----";
+   print "----";    # over run counts
+
+   for(1..3) {
+      print "-------";          # over timing
+      print "-----";            # over %
+      print "-------";          # over time per each
+      print "--";
+      last unless $os_times_present;
+   }
+
+   print "\n";
+}
+
+print "\n";
+
+underline;
+
+# print header
+print " " for 1..$max_key_len;
+print " | ";
+print "runs";    # over run count
+print " | ";
+
+for( 
+   "  perl ",
+   "os time",
+   "ovrhead"
+) {
+   print "$_";      # over number
+   print " (%) ";   # over %
+   print "  each "; # over time per each
+   print "| ";
+   last unless $os_times_present;
+}
+
+print "\n";
+
+
+# header underline
+underline;
+
+# print data
+for( sort keys %all_unique_keys ) {
+   my $key = $_;
+
+   if( $key eq "~" ) { # special underline mark
+      underline;
+      next;
+   }
+   
+   $key =~ s/~// ; # special sorting character
+   $key .= " " while length $key < $max_key_len;
+   print $key, " | ";
+   
+   if( defined $run_counts{$_} ) {
+      printf "%4d ", $run_counts{$_};
+   }
+   else {
+      print  "     ";
+   }
+   print "| ";
+   print_timing \%perl_times,     $_ ;
+   if( $os_times_present ) {
+      print_timing \%os_times,       $_ ;
+      print_timing \%overhead_times, $_ ;
+   }
+   print "\n";
+}
+
+print "\n";

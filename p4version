@@ -1,0 +1,90 @@
+#!/usr/bin/perl -w
+
+## allow user to specify a p4 version bin directory
+## either via commmand line or menu, then return.
+
+
+use Cwd;
+use File::Basename;
+use File::Spec;
+use Getopt::Std;
+
+
+# set the directory where the p4 versions are
+my $dir = File::Spec->rel2abs( dirname( $0 ) );
+$dir = File::Spec->catfile( $dir, "p4versions" );
+
+sub dumb_menu {
+   use Term::ReadLine;
+
+   $term = new Term::ReadLine "menu_result";
+
+   my $num_items = @_;
+   return unless $num_items;
+
+   print "p4 and p4d versions found:\n";
+   print "  $_\n" for @_;
+
+   my $ver;
+   do {
+      my $prompt = "Enter version number to use: ";
+      $prompt .= " [$_[0]] " if $num_items == 1;
+      $ver = $term->readline( $prompt );
+      $ver = $_[0] if $num_items == 1 && (! defined $ver || ! length $ver);
+   } until grep { $ver eq $_ } @_ ;
+
+   return $ver;
+}
+
+
+sub find_versions {
+   my $save_dir = cwd;
+   chdir $dir;
+   my @versions = sort glob "*";
+   chdir $save_dir;
+
+   return @versions;
+}
+
+
+sub usage {
+   die "usage: p4version
+       p4version [version-number]
+         select a p4 version, and print full path for that version to standard out.
+         options: -h   this help
+                  -l   list all available versions
+";
+}
+
+
+my $version;
+
+getopts('hl', \%opts) or usage;
+
+usage if $opts{h};
+if( $opts{l} ) {
+   my @versions = find_versions;
+   print join " ", map( "$dir/$_", @versions ), "\n";
+   exit 0;
+}
+elsif( @ARGV == 1 ) {
+   $version = shift;
+
+   die "p4 version directory $dir/$version not found\n"
+      unless -d "$dir/$version"
+}
+else {
+   # determine what versions are available to select
+   # (both p4 and p4d must be present)
+   my $ver_hash;
+   
+   my @versions = find_versions;
+   die "no p4 versions found\n" unless @versions;
+
+   #select version, or exit
+   $version = dumb_menu @versions;
+   
+}
+
+
+print "$dir/$version\n"; 

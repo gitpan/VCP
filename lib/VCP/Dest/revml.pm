@@ -6,18 +6,39 @@ VCP::Dest::revml - Outputs versioned files to a revml file
 
 =head1 SYNOPSIS
 
-## revml output class:
-
    revml:[<output-file>]
    revml:[<output-file>] --dtd <revml.dtd>
    revml:[<output-file>] --version <version>
-   revml:[<output-file>] --sort-by=name,rev
+   revml:[<output-file>] --compress
+   revml:[<output-file>] --no-indent
 
 =head1 DESCRIPTION
 
-The --dtd and --version options cause the output to be checked against
+=head1 OPTIONS
+
+=item --dtd
+
+   --dtd=revml.dtd
+   --version=0.33
+
+The --dtd (or --version) option causes the output to be checked against
 a particular version of revml.  This does I<not> cause output to be in 
 that version, but makes sure that output is compliant with that version.
+
+=item --compress
+
+Generate a gzipped revml file as output.  Requires gzip be installed
+on the machine.
+
+If the output filename ends in ".gz", the output will be compressed 
+even if the --compress flag isn't present.
+
+=item --no-indent
+
+Makes the revml output with all the start tags flush left rather than
+indented to indicate the tree structure.
+
+=back
 
 =head1 EXTERNAL METHODS
 
@@ -25,32 +46,70 @@ that version, but makes sure that output is compliant with that version.
 
 =cut
 
+$VERSION = 0.1 ;
+
+@ISA = qw( VCP::Dest VCP::Utils::revml );
+
+use VCP::Logger qw( pr_doing BUG );
+use VCP::Utils qw( start_dir_rel2abs );
+use VCP::Utils::revml;
+
+BEGIN {
+   ## Beginning vcpers might try running a command like "vcp" just
+   ## to see what happens.  Since RevML is not required for most
+   ## vcp uses and XML::Parser requires a C compiler, vcp is often
+   ## distributed without XML::Parser, so this message is to help
+   ## steer hapless new users to the help system if the XML output
+   ## modules are also not found.
+
+   ## The exit(1) is to avoid untidy and scary 
+   ## "compilation failed in BEGIN" messages
+   VCP::Logger::pr( <<TOHERE ), exit 1 unless eval "require RevML::Writer";
+RevML::Writer is not installed or loading properly on this system and
+it is required to write RevML files.  If writing RevML files is not
+what you want to do, try
+
+    vcp help
+
+TOHERE
+}
+
+
 use strict ;
 
 use Carp ;
 use Digest::MD5 ;
 use Fcntl ;
-use Getopt::Long ;
+use File::Basename;
 use MIME::Base64 ;
 use RevML::Doctype ;
 use RevML::Writer ;
 use Symbol ;
 use UNIVERSAL qw( isa ) ;
-use VCP::Debug ':debug' ;
-use VCP::Rev ;
+use VCP::Debug qw( :debug ) ;
+use VCP::Dest;
+use VCP::Logger qw( lg );
+use VCP::Rev qw( iso8601format );
+use VCP::Utils qw( shell_quote empty );
+
 use Text::Diff ;
 
-use vars qw( $VERSION ) ;
+#use base qw( VCP::Dest VCP::Utils::revml );
 
-$VERSION = 0.1 ;
-
-use base 'VCP::Dest' ;
-
-use fields (
-   'OUT_NAME',  ## The name of the output file, or '-' for stdout
-   'OUT_FH',    ## The handle of the output file
-   'WRITER',    ## The XML::AutoWriter instance write with
-) ;
+#use fields (
+#   'DTD_OPTION', ## The --dtd or --version flag from the command line
+#   'COMPRESS',   ## flag indicating gzip'd compressed output
+#   'DOCTYPE',    ## revml doc type
+#   'OUT_FH',     ## The handle of the output file
+#   'WRITER',     ## The XML::AutoWriter instance write with
+#   'SEEN_REV',   ## Whether we've seen our first revision or not.
+#   'NO_INDENT',  ## output all flush left, not indented to indicate tree structure
+#   'FILES',      ## The files we care about.  When we check these out from
+#                 ## the source, we need to hold on to them so that we
+#                 ## can perform diffs.  These are keyed on rev_id and
+#                 ## contain VCP::RefCountedFile objects (assuming
+#                 ## get_source_file() returns that kind of object).
+#) ;
 
 
 =item new
@@ -63,58 +122,94 @@ Attempts to create the output file if one is specified.
 =cut
 
 sub new {
-   my $class = shift ;
-   $class = ref $class || $class ;
-
-   my VCP::Dest::revml $self = $class->SUPER::new( @_ ) ;
-
-   my @errors ;
+   my $self = shift->SUPER::new;
 
    my ( $spec, $options ) = @_ ;
 
-   my $parsed_spec = $self->parse_repo_spec( $spec ) ;
+   $self->parse_revml_repo_spec( $spec )
+      unless empty $spec;
 
-   my $file_name = $parsed_spec->{FILES} ;
-   $self->{OUT_NAME} = defined $file_name && length $file_name
-      ? $file_name
-      : '-' ;
-   if ( $self->{OUT_NAME} eq '-' ) {
-      $self->{OUT_FH}   = \*STDOUT ;
+   $self->parse_options( $options );
+
+   return $self;
+}
+
+
+sub options_spec {
+   my $self = shift ;
+
+   return (
+      $self->SUPER::options_spec,
+      'dtd|version=s' => \$self->{DTD_OPTION},
+      "compress"      => \$self->{COMPRESS},
+      "no-indent"     => \$self->{NO_INDENT},
+   );
+}
+
+
+sub init {
+   my $self = shift ;
+
+   $self->head_revs->open_db;
+
+   $self->{DOCTYPE} = RevML::Doctype->new(
+      $self->{DTD_OPTION},
+      main::bundled_files()
+   );
+
+   my $file_name = $self->repo_filespec;
+   $file_name = "-"
+      if empty $file_name;
+   $file_name = start_dir_rel2abs $file_name
+      unless $file_name eq "-";
+
+   lg "revml file name is ", $file_name;
+
+
+   # always un-compress if filename ends in ".gz"
+   my $gzip;
+   if ( $^O =~ /Win32/ ) {
+      $self->{COMPRESS} = 1 if $file_name =~ /\.gz$/i ;
+      $gzip = "gzip.exe";
+   }
+   else {
+      $self->{COMPRESS} = 1 if $file_name =~ /\.gz$/ ;
+      $gzip = "gzip";
+   }
+
+   if ( $file_name eq '-' ) {
+      if( $self->{COMPRESS} ) {
+         require Symbol ;
+         $self->{OUT_FH} = Symbol::gensym ;
+         open( $self->{OUT_FH}, "| $gzip" )
+            or die "$!: | gzip" ;
+      }
+      else {
+         $self->{OUT_FH}   = \*STDOUT ;
+      }
       ## TODO: Check OUT_FH for writability when it's set to STDOUT
    }
    else {
       require Symbol ;
       $self->{OUT_FH} = Symbol::gensym ;
       ## TODO: Provide a '-f' force option
-      open( $self->{OUT_FH}, ">$self->{OUT_NAME}" )
-         or die "$!: $self->{OUT_NAME}" ;
+
+      if( $self->{COMPRESS} ) {
+         my $out_name = shell_quote $file_name;
+         open( $self->{OUT_FH}, "| $gzip > $out_name" )
+            or die "$!: | gzip > $file_name" ;
+      }
+      else {
+         open( $self->{OUT_FH}, ">$file_name" ) or die "$!: '$file_name'" ;
+      }
    }
    ## BUG: Can't undo this AFAIK, so we're permanently altering STDOUT
-   ## if OUT_NAME eq '-'.
+   ## if $out_name eq '-'.
    binmode $self->{OUT_FH};
-
-   my $doctype ;
-   my @sort_spec ;
-   {
-      local *ARGV = $options ;
-      GetOptions(
-	 'dtd|version' => sub {
-	    $doctype = RevML::Doctype->new( shift @$options ) ;
-	 },
-	 "k|sort-by=s" => \@sort_spec,
-       ) or $self->usage_and_exit ;
-   }
-
-   $self->set_sort_spec( @sort_spec ) if @sort_spec ;
-
-   $doctype = RevML::Doctype->new
-      unless $doctype ;
-
-   die join( '', @errors ) if @errors ;
 
    $self->writer(
       RevML::Writer->new(
-	 DOCTYPE => $doctype,
+	 DOCTYPE => $self->{DOCTYPE},
 	 OUTPUT  => $self->{OUT_FH},
       )
    );
@@ -123,12 +218,41 @@ sub new {
 }
 
 
-sub _ISO8601(;$) {
-   my @f = reverse( ( @_ ? gmtime( shift ) : gmtime )[0..5] ) ;
-   $f[0] += 1900 ;
-   $f[1] ++ ; ## Month of year needs to be 1..12
-   return sprintf( "%04d-%02d-%02d %02d:%02d:%02dZ", @f ) ;
+=item ui_set_revml_repo_spec
+
+set the repo_spec, but die if no good.
+this should be called from a ui handler that
+will handle exceptions.
+
+
+
+=cut
+
+sub ui_set_revml_repo_spec {
+   my $self = shift ;
+
+   $self->parse_revml_repo_spec( @_ );
+   my $file = $self->repo_filespec;
+
+   die "Error: '-' signifies standard output, not a file name.\n"
+      if $file eq '-';
+
+   $file = start_dir_rel2abs $file ;
+
+   die "Error: '$file' is a directory.\n"
+      if -d $file;
+
+   if( -e $file ) {
+      die "Warning: '$file' exists and is writable.\n" if -w $file;
+      die "Error: '$file' exists, but is not writable!\n";
+   }
+
+   my $dirname = dirname( $file );
+   die "Error: directory '$dirname' not found!\n"
+      unless -d $dirname;
 }
+
+
 
 sub _emit_characters {
    my ( $w, $buf ) = @_ ;
@@ -153,244 +277,321 @@ sub _emit_characters {
 
 
 sub handle_rev {
-   my VCP::Dest::revml $self = shift ;
-   my VCP::Rev $r ;
+   my $self = shift ;
+   my $r ;
    ( $r ) = @_ ;
+
+   debug "got ", $r->as_string if debugging;
 
    my $w = $self->writer ;
 
-   if ( $self->none_seen ) {
-      $w->setDataMode( 1 ) ;
+   if ( ! $self->{SEEN_REV} ) {
+      ## We don't write any XML until the first rev arrives, so an empty
+      ## RevML input doc (with root node but no revs) results in no output.
+      ## This is more for non-RevML inputs, so that an export that selects
+      ## no new revisions generates no output, which is easy to test for.
+      $w->setDataMode( 1 ) unless $self->{NO_INDENT};
       $w->xmlDecl ;
       my $h = $self->header ;
       ## VCP::Source::revml passes through the original date.  Other sources
       ## don't.
       $w->time(
          defined $h->{time}
-	    ? _ISO8601 $h->{time}
-	    : _ISO8601
+	    ? iso8601format $h->{time}
+	    : iso8601format gmtime
       ) ;
       $w->rep_type( $h->{rep_type} ) ;
       $w->rep_desc( $h->{rep_desc} ) ;
+      $w->comment(   $h->{comment}    ) if defined $h->{comment};
       $w->rev_root( $h->{rev_root} ) ;
    }
 
-   my VCP::Rev $saw = $self->seen( $r ) ;
+   $self->{SEEN_REV} = 1;
 
-   ## If there's no work path for the current file, keep the previous one.
-   ## This is a cheat that allows us to diff against the last known version
-   ## if a file is deleted and then re-added.  Without this line, we would
-   ## have to include the new version of the file.
-   $self->seen( $saw ) if $saw && ! defined $r->work_path ;
+   ## TODO: get rid of revs that aren't needed.  We should only need
+   ## the most recent rev with a work path on each branch.
+
+   $self->revs->add( $r );
 
    my $fn = $r->name ;
 
    my $is_base_rev = $r->is_base_rev ;
-   die(
-      "Saw '", $saw->as_string,
-      "', but found a later base rev '" . $r->as_string, "'"
-   ) if $saw && $is_base_rev ;
 
    ## type and rev_id are not provided for VSS deletes
-   debug "vcp: emitting revml for ", $r->as_string
-      if debugging $self;
+   debug "emitting revml for ", $r->as_string
+      if debugging;
 
-   $w->start_rev ;
-   $w->name(       $fn           ) ;
-   $w->type(       $r->type               ) if defined $r->type ;
-   $w->p4_info(    $r->p4_info            ) if defined $r->p4_info ;
-   $w->cvs_info(   $r->cvs_info           ) if defined $r->cvs_info ;
-   $w->rev_id(     $r->rev_id             ) if defined $r->rev_id ;
-   $w->change_id(  $r->change_id          ) if defined $r->change_id ;
-   $w->time(       _ISO8601 $r->time      ) if defined $r->time ;
-   $w->mod_time(   _ISO8601 $r->mod_time  ) if defined $r->mod_time ;
-   $w->user_id(    $r->user_id            ) if defined $r->user_id;
+   eval {
+      $w->start_rev( id => $r->id );
+      $w->name(                 $fn                      );
+      $w->source_name(          $r->source_name          );
+      $w->source_filebranch_id( $r->source_filebranch_id );
+      $w->source_repo_id(       $r->source_repo_id );
+      $w->type(       $r->type               ) if defined $r->type ;
+      $w->p4_info(    $r->p4_info            ) if defined $r->p4_info ;
+      $w->cvs_info(   $r->cvs_info           ) if defined $r->cvs_info ;
 
-   ## Sorted for readability & testability
-   $w->label( $_ ) for sort $r->labels ;
+      if( defined $r->branch_id || defined $r->source_branch_id ) {
+         $w->branch_id(
+            defined $r->branch_id        ? $r->branch_id        : ()
+         );
+         $w->source_branch_id(
+            defined $r->source_branch_id ? $r->source_branch_id : ()
+         );
+      }
 
-   if ( defined $r->comment && length $r->comment ) {
-      $w->start_comment ;
-      my $c = $r->comment ;
-      _emit_characters( $w, \$c ) ;
-      $w->end_comment ;
-      $w->setDataMode( 1 ) ;
-   }
+      $w->rev_id(                   $r->rev_id ) if defined $r->rev_id ;
+      $w->source_rev_id(     $r->source_rev_id ) if defined $r->source_rev_id ;
 
-   my $convert_crs = $^O =~ /Win32/ && ( $r->type || "" ) eq "text" ;
+      if( defined $r->change_id || defined $r->source_change_id ) {
+         $w->change_id(
+            defined $r->change_id        ? $r->change_id        : ()
+         );
+         $w->source_change_id(
+            defined $r->source_change_id ? $r->source_change_id : ()
+         );
+      }
 
-   my $digestion ;
-   my $close_it ;
-   my $cp = $r->work_path ;
-   if ( $is_base_rev ) {
-      sysopen( F, $cp, O_RDONLY ) or die "$!: $cp\n" ;
-      binmode F ;
-      $digestion = 1 ;
-      $close_it = 1 ;
-   }
-   elsif ( $r->action eq 'delete' ) {
-      $w->delete() ;
-      $self->delete_seen( $r ) ;
-   }
-   else {
-      sysopen( F, $cp, O_RDONLY ) or die "$!: $cp\n" ;
-      ## need to binmode it so ^Z can pass through, need to do \r and
-      ## \r\n -> \n conversion ourselves.
-      binmode F ;
-      $close_it = 1 ;
+      $w->time(       iso8601format $r->time )     if defined $r->time ;
+      $w->mod_time(   iso8601format $r->mod_time ) if defined $r->mod_time ;
+      $w->user_id(    $r->user_id            )     if defined $r->user_id;
 
-      my $buf ;
-      my $read ;
-      my $has_nul ;
-      my $total_char_count = 0 ;
-      my $bin_char_count   = 0 ;
-      while ( ! $has_nul ) {
-	 $read = sysread( F, $buf, 100_000 ) ;
-	 die "$! reading $cp\n" unless defined $read ;
-	 last unless $read ;
-	 $has_nul = $buf =~ tr/\x00// ;
-	 $bin_char_count   += $buf =~ tr/\x00-\x08\x0b-\x1f\x7f-\xff// ;
-	 $total_char_count += length $buf ;
-      } ;
+      ## Sorted for readability & testability
+      $w->label( $_ ) for sort $r->labels ;
 
-      sysseek( F, 0, 0 ) or die "$! seeking on $cp\n" ;
-      
-      $buf = '' unless $read ;
-      ## base64 generate 77 chars (including the newline) for every 57 chars
-      ## of input. A '<char code="0x01" />' element is 20 chars.
-      my $encoding = $bin_char_count * 20 > $total_char_count * 77/57
-	 ? "base64"
-	 : "none" ;
+      unless ( empty $r->comment ) {
+         $w->start_comment ;
+         my $c = $r->comment ;
+         _emit_characters( $w, \$c ) ;
+         $w->end_comment ;
+         $w->setDataMode( 1 ) unless $self->{NO_INDENT};
+      }
 
-      if (  ! $saw                    ## First rev, can't delta
-         || ! defined $saw->work_path ## No file, can't delta
-	 || $has_nul                  ## patch would barf, can't delta
-	 || $encoding ne "none"       ## base64, can't delta
-      ) {
-         ## Full content, no delta.
-	 $w->start_content( encoding => $encoding ) ;
-	 my $delete_nl ;
-	 while () {
-	    ## Odd chunk size is because base64 is most concise with
-	    ## chunk sizes a multiple of 57 bytes long.
-	    $read = sysread( F, $buf, 57_000 ) ;
-	    die "$! reading $cp\n" unless defined $read ;
-	    last unless $read ;
-	    if ( $convert_crs ) {
-	       substr( $buf, 0, 1 ) = ""
-		  if $delete_nl && substr( $buf, 0, 1 ) eq "\n" ;
-               $delete_nl = substr( $buf, -1 ) eq "\n" ;
-	       $buf =~ s/(\r\n|\r)/\n/g ;  ## ouch, that's gotta hurt.
-	    }
-	    if ( $encoding eq "none" ) {
-	       _emit_characters( $w, \$buf ) ;
-	    }
-	    else {
-	       $w->characters( encode_base64( $buf ) ) ;
-	    }
-	 }
-	 $w->end_content ;
-	 $w->setDataMode( 1 ) ;
+      $w->previous_id( $r->previous_id ) if defined $r->previous_id;
+
+      my $convert_crs = $^O =~ /Win32/ && ( $r->type || "" ) eq "text" ;
+
+      my $digestion ;
+      my $close_it ;
+      my $cp;
+
+      $cp = $r->get_source_file
+         if $is_base_rev || $r->action eq "add" || $r->action eq "edit";
+
+      $self->{FILES}->{$r->id} = $cp unless empty $cp;
+
+      if ( $is_base_rev ) {
+         sysopen( F, $cp, O_RDONLY ) or die "$!: $cp\n" ;
+         binmode F ;
+         $digestion = 1 ;
+         $close_it = 1 ;
+      }
+      elsif ( $r->is_placeholder_rev ) {
+         $w->placeholder() ;
+         $digestion = 0;
+      }
+      elsif ( $r->action eq 'delete' ) {
+         $w->delete() ;
       }
       else {
-         ## Delta from previous version
-	 $w->base_name(   $saw->name )
-	    if $saw->name ne $r->name ;
-	 $w->base_rev_id( $saw->rev_id ) ;
+         BUG "\$r->get_source_file() returned undef" unless defined $cp;
+         BUG "\$r->get_source_file() returned ''"    unless length $cp;
+         sysopen( F, $cp, O_RDONLY ) or die "$!: '$cp'\n" ;
+         ## need to binmode it so ^Z can pass through, need to do \r and
+         ## \r\n -> \n conversion ourselves.
+         binmode F ;
+         $close_it = 1 ;
 
-	 $w->start_delta( type => 'diff-u', encoding => 'none' ) ;
+         my $buf ;
+         my $read ;
+         my $total_char_count = 0 ;
+         my $bin_char_count   = 0 ;
+         while ( 1 ) {
+            $read = sysread( F, $buf, 100_000 ) ;
+            die "$! reading $cp\n" unless defined $read ;
+            last unless $read ;
+            $bin_char_count   += $buf =~ tr/\x00-\x08\x0b-\x1f\x7f-\xff// ;
+            $total_char_count += length $buf ;
+         } ;
 
-	 my $old_cp = $saw->work_path ;
+         sysseek( F, 0, 0 ) or die "$! seeking on $cp\n" ;
+         
+         $buf = '' unless $read ;
+         ## base64 generate 77 chars (including the newline) for every 57 chars
+         ## of input. A '<char code="0x01" />' element is 20 chars.
+         my $legal_xml_char_count = $total_char_count - $bin_char_count;
 
-	 die "vcp: no old work path for '", $saw->name, "'\n"
-	    unless defined $old_cp && length $old_cp ;
+         ## TODO: calculate the diff no matter what in to a temp file,
+         ## keeping stats on how to encode it (none vs. base64).
+         ## If encoding it would be shorter than the encoded content of 
+         ## the new rev, use it.  This should be safe now that we're using
+         ## all-Perl diff & patch (which don't mind NUL, for instance).
+         ## if both are eaual, use the more human readable format ("none")
+         my $encoding =
+               ( $legal_xml_char_count + $bin_char_count * 20 )
+                  <= $total_char_count * 77/57
+            ? "none"
+            : "base64";
 
-	 die "vcp: old work path '$old_cp' not found for '", $saw->name, "'\n"
-	    unless -f $old_cp ;
+         my $pr;
 
-         ## TODO: Include entire contents if diff is larger than the contents.
+         unless ( empty $r->previous_id ) {
+            $pr = $self->revs->get( $r->previous_id );
+            if ( $pr && $pr->is_placeholder_rev ) {
+               ## Ignore placeholders for the purposes of diffing files
+               $pr = $self->revs->get( $pr->previous_id );
+            }
+         }
 
-	 ## Accumulate a bunch of output so that characters can make a
-	 ## knowledgable CDATA vs &lt;&amp; escaping decision.
-	 my @output ;
-	 my $outlen = 0 ;
-	 my $delete_nl ;
-	 ## TODO: Write a "minimal" diff output handler that doesn't
-	 ## emit any lines from $old_cp, since they are redundant.
-	 diff $old_cp, $cp,
-	    {
-	       ## Not passing file names, so no filename header.
-               STYLE  => "VCP::DiffFormat",
-	       OUTPUT => sub {
-		  push @output, $_[0] ;
-		  ## Assume no lines split between \r and \n because
-		  ## diff() splits based on lines, so we can just
-		  ## do a simple conversion here.
-		  $output[-1] =~ s/\r\n|\r/\n/g if $convert_crs ;
-		  $outlen += length $_[0] ;
-		  return unless $outlen > 100_000 ;
-		  _emit_characters( $w, \join "", splice @output  ) ;
-	       },
-	    } ;
-	 _emit_characters( $w, \join "", splice @output  ) if $outlen ;
-	 $w->end_delta ;
-	 $w->setDataMode( 1 ) ;
-      } ;
-      $digestion = 1 ;
-   }
+         if ( $pr                       ## Can't delta unless we have $pr
+            && exists $self->{FILES}->{$pr->id}
+            && $encoding eq "none"      ## base64, should't delta.
+         ) {
+            $w->start_delta( type => 'diff-u', encoding => 'none' ) ;
 
-   if ( $digestion ) {
-      ## TODO: See if this should be seek or sysseek.
-      sysseek F, 0, 0 or die "$!: $cp" ;
-      my $d= Digest::MD5->new ;
-      ## gotta do this by hand, since it's in binmode and we want
-      ## to handle ^Z and lone \r's.
-      my $delete_nl ;
-      my $read ;
-      my $buf ;
-      while () {
-	 $read = sysread( F, $buf, 10_000 ) ;
-	 die "$! reading $cp\n" unless defined $read ;
-	 last unless $read ;
-	 if ( $convert_crs ) {
-	    substr( $buf, 0, 1 ) = ""
-	       if $delete_nl && substr( $buf, 0, 1 ) eq "\n" ;
-	    $delete_nl = substr( $buf, -1 ) eq "\n" ;
-	    $buf =~ s/(\r\n|\r)/\n/g ;  ## ouch, that's gotta hurt.
-	 }
-	 $d->add( $buf ) ;
+            my $old_cp = $self->{FILES}->{$pr->id};
+
+            die "no old work path for '", $pr->id, "'\n"
+               if empty $old_cp ;
+
+            die "old work path '$old_cp' not found for '", $pr->id, "'\n"
+               unless -f $old_cp ;
+
+            ## TODO: Include entire contents if diff is larger than the contents.
+
+            ## Accumulate a bunch of output so that characters can make a
+            ## knowledgable CDATA vs &lt;&amp; escaping decision.
+            my @output ;
+            my $outlen = 0 ;
+            my $delete_nl ;
+            ## TODO: Write a "minimal" diff output handler that doesn't
+            ## emit any lines from $old_cp, since they are redundant.
+            debug "diffing $old_cp $cp" if debugging;
+            diff "$old_cp", "$cp",  ## VCP::RefCountedFile must be stringified
+               {
+                  ## Not passing file names, so no filename header.
+                  STYLE  => "VCP::DiffFormat",
+                  OUTPUT => sub {
+                     push @output, $_[0] ;
+                     ## Assume no lines split between \r and \n because
+                     ## diff() splits based on lines, so we can just
+                     ## do a simple conversion here.
+                     $output[-1] =~ s/\r\n|\r/\n/g if $convert_crs ;
+                     $outlen += length $_[0] ;
+                     return unless $outlen > 100_000 ;
+                     _emit_characters( $w, \join "", splice @output  ) ;
+                  },
+               } ;
+            _emit_characters( $w, \join "", splice @output  ) if $outlen ;
+            $w->end_delta ;
+            $w->setDataMode( 1 ) unless $self->{NO_INDENT};
+         }
+         else {
+            ## Full content, no delta.
+            $w->start_content( encoding => $encoding ) ;
+            my $delete_nl ;
+            while () {
+               ## Odd chunk size is because base64 is most concise with
+               ## chunk sizes a multiple of 57 bytes long.
+               $read = sysread( F, $buf, 57_000 ) ;
+               die "$! reading $cp\n" unless defined $read ;
+               last unless $read ;
+               if ( $convert_crs ) {
+                  substr( $buf, 0, 1 ) = ""
+                     if $delete_nl && substr( $buf, 0, 1 ) eq "\n" ;
+                  $delete_nl = substr( $buf, -1 ) eq "\n" ;
+                  $buf =~ s/(\r\n|\r)/\n/g ;  ## ouch, that's gotta hurt.
+               }
+               if ( $encoding eq "none" ) {
+                  _emit_characters( $w, \$buf ) ;
+               }
+               else {
+                  $w->characters( encode_base64( $buf ) ) ;
+               }
+            }
+            $w->end_content ;
+            $w->setDataMode( 1 ) unless $self->{NO_INDENT};
+         } ;
+         $digestion = 1 ;
       }
-      $d->addfile( \*F ) ;
-      $w->digest( $d->b64digest, type => 'MD5', encoding => 'base64' ) ;
-   }
-   if ( $close_it ) {
-      close F ;
-   }
 
-   $w->end_rev ;
+      if ( $digestion ) {
+         ## TODO: See if this should be seek or sysseek.
+         sysseek F, 0, 0 or die "$!: $cp" ;
+         my $d= Digest::MD5->new ;
+         ## gotta do this by hand, since it's in binmode and we want
+         ## to handle ^Z and lone \r's.
+         my $delete_nl ;
+         my $read ;
+         my $buf ;
+         while () {
+            $read = sysread( F, $buf, 10_000 ) ;
+            die "$! reading $cp\n" unless defined $read ;
+            last unless $read ;
+            if ( $convert_crs ) {
+               substr( $buf, 0, 1 ) = ""
+                  if $delete_nl && substr( $buf, 0, 1 ) eq "\n" ;
+               $delete_nl = substr( $buf, -1 ) eq "\n" ;
+               $buf =~ s/(\r\n|\r)/\n/g ;  ## ouch, that's gotta hurt.
+            }
+            $d->add( $buf ) ;
+         }
+         $d->addfile( \*F ) ;
+         $w->digest( $d->b64digest, type => 'MD5', encoding => 'base64' ) ;
+      }
+      if ( $close_it ) {
+         close F ;
+      }
 
-#   $self->seen( $r ) ;
+      $w->end_rev ;
+      1;
+   } or die "$@ while writing ", defined $r ? $r->as_string : "UNDEF $r!!";
+
+   pr_doing;
+
+   $self->head_revs->set( [ $r->source_repo_id, $r->source_filebranch_id ],
+                          $r->source_rev_id );
 }
 
 
 sub handle_footer {
-   my VCP::Dest::revml $self = shift ;
+   my $self = shift ;
    my ( $footer ) = @_ ;
 
-   $self->writer->endAllTags() unless $self->none_seen ;
+   $self->writer->endAllTags() if $self->{SEEN_REV};
+
+   $self->{SEEN_REV} = 0;
+
+   $self->SUPER::handle_footer;
 
    return ;
 }
 
 
 sub writer {
-   my VCP::Dest::revml $self = shift ;
+   my $self = shift ;
    $self->{WRITER} = shift if @_ ;
    return $self->{WRITER} ;
 }
 
 
 =back
+
+=head1 LIMITATIONS
+
+Can consume all available memory and disk space because this driver keeps
+all old revisions around (metadata in RAM, file images on disk) so that
+diff()s may be run against the parent revision when a branch is made.
+
+This behavior is not completely necessary, but because RevML is
+currently only used for testing and analysis of small filesets, this
+limitation is acceptable.
+
+We can add a command line option to disable this behavior by limiting
+(to 0 or to some cache size) the number of revs kept around and letting
+files that have no previous rev handy be emitted in their entirety
+instead of use a diff.  We could also use an on-disk store for the
+metadata if that would help.  Let us know your needs.
 
 =head1 AUTHOR
 

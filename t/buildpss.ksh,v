@@ -1,0 +1,2349 @@
+head	1.21;
+access;
+symbols
+	PRIME_REVIEWED:1.19
+	FB_2_9_4_0:1.19
+	FB_2_9_3_0:1.19
+	TB_2_0_1_1:1.19
+	TuneBase_RC:1.19.0.56
+	FB_2_9_2_0:1.19
+	DYNAMIC_WEB_CONTENT_0_3_BRANCH:1.19.0.54
+	FB_2_0_2_0:1.19
+	FB_2_9_1_0:1.19
+	DYNAMIC_WEB_CONTENT_0_2_TAG:1.19
+	DYNAMIC_WEB_CONTENT_0_2_BRANCH:1.19.0.52
+	DYNAMIC_WEB_CONTENT_0_1_FINAL:1.19
+	CEDIA_2003:1.19
+	DYNAMIC_WEB_CONTENT_0_1_BRANCH:1.19.0.48
+	DYNAMIC_WEB_CONTENT_0_1_START:1.19
+	TB_2_0_1_0:1.19
+	FB_2_0_1_2:1.19
+	KMC_V2_0_0_8:1.19
+	FB_2_0_1_1:1.19
+	KMC_V2_0_0_7:1.19
+	KMC_V2_0_0_6:1.19
+	FB_2_0_0_29:1.19
+	KMC_V2_0_0_5:1.19
+	KMC_V2_0_0_4:1.19
+	FB_2_0_0_28:1.19
+	KMC_2_0_BRANCH:1.19.0.50
+	KMC_V2_0_0_3:1.19
+	FireBall_Cirrus:1.19.0.46
+	FB_2_0_0_27:1.19
+	FB_2_0_0_26:1.19
+	FB_2_0_0_25:1.19
+	FB_2_0_0_24:1.19
+	FB_2_0_0_23:1.19
+	FB_2_0_0_22:1.19
+	FB_2_0_0_21:1.19
+	FB_RC_DHCP:1.19.0.44
+	KMC-RC2_0-BRANCH:1.19.0.42
+	KMC_V2_0_0_0:1.19
+	FB_2_0_0_18:1.19
+	FB_2_0_0_17:1.19
+	FB_V2_0_0_14:1.19
+	FB_V2_0_0_12:1.19
+	FB_V2_0_0_11:1.19
+	FB_V2_0_0_10:1.19
+	FB_V2_0_0_9:1.19
+	PRIME-NEW-DHCP:1.19.0.40
+	FB_V2_0_0_8:1.19
+	DYNAMIC_WEB_CONTENT_0_0:1.19.0.38
+	FB_2_0_0_7:1.19
+	KMC_V1_9_0_1:1.19
+	FB_2_0_0_6:1.19
+	FB_2_0_0_4:1.19
+	FB_2_0_0_3:1.19
+	FB_2_0_0_2:1.19
+	FB_2_0_0_0:1.19
+	FireBall_2_0_RC:1.19.0.36
+	FB_1_9_0_21__02_12_03:1.19
+	FB_1_9_0_19__02_11_03:1.19
+	DIAG_2003_02_03:1.19
+	FB_V1_9_0_9:1.19
+	FB_V1_9_0_6:1.19
+	FB-V1_9_0_5:1.19
+	FB_V1_9_0_2:1.19
+	FB_V1_9_0_0:1.19
+	TB_V1_2_0_0:1.19
+	FB_V1_2_0_7:1.19
+	FB_V1_2_0_5:1.19
+	FB_V1_2_0_1:1.19
+	FB1_2-BRANCH:1.19.0.34
+	FB_V1_2_0_0:1.19
+	TB_BRANCH_10_22_02:1.19.0.32
+	TB_V1_1_1_0:1.19
+	FB_V1_1_2_0:1.19
+	TB_DIAG_UUT_1_3:1.19
+	CEDIA_2002_EC:1.19.0.30
+	FB_MR_BRANCH1:1.19.0.28
+	FB-V1_1_1_0:1.19
+	FB-Diag-UUT-V1_3:1.19
+	DAR_V1_2_0_54:1.19
+	TB200_V1_1_0_0:1.19
+	FB_1_1_0_5:1.19
+	FB_V1_1_0_4:1.19
+	AOLFB_V0_1_0_8:1.19
+	KMC_V1_1_0_10:1.19
+	AOLFB_V0_1_0_7:1.19
+	KMC_V1_1_0_9:1.19
+	AOLFB-V0_1_0_6:1.19
+	AOLFB_V0_1_0_5:1.19
+	KMC_V1_1_0_7:1.19
+	FB_V1_1_0_3:1.19
+	KMC_V1_1_0_6:1.19
+	AOLFB_V0_1_0_2:1.19
+	AOLFB_V0_1_0_1:1.19
+	FB_1_1_0_2:1.19
+	TB_1_0_1_1:1.19
+	KMC_V1_1_0_4_Ax1_06_NB1_04:1.19
+	KMC_1_1_0_3:1.19
+	KMC_1_1_0_2:1.19
+	KMC_1_1_0_1:1.19
+	FB_1_1_0_0:1.19
+	KMC_1_1_0_0:1.19
+	DAR_V1_2_0_50:1.19
+	KMC_1_0_9_13:1.19
+	DAR_V1_2_0_47:1.19
+	KMC_1_0_9_11:1.19
+	FB_DIAG_1_2:1.19
+	FB_1_0_1_5:1.19
+	KMC_1_0_9_10:1.19
+	KMC_1_0_9_9:1.19
+	KMC_1_0_9_8:1.19
+	TB_1_0_1_0:1.19
+	KMC_1_0_9_7:1.19
+	KMC_1_0_9_5:1.19
+	FB_1_0_1_4:1.19
+	KMC_1_0_9_4:1.19
+	DAR_V1_2_0_44:1.19
+	FB_1_0_1_2:1.19
+	FB_1_0_1_1:1.19
+	FB_SAFE:1.19
+	KMC_032802_1730:1.19
+	KMC_1_0_9_3:1.19
+	FB_1_0_1_0:1.19
+	DAR_V1_2_0_42_SOURCE:1.19
+	KMC_1_0_9_2:1.19
+	DAR_V1_2_0_41:1.19
+	DAR_V1_2_0_40:1.19
+	TB200_V1_0_0_1:1.19
+	KMC_1_0_9_1:1.19
+	TB_DIAG_1_2:1.19
+	TB_1_0_0_0:1.19
+	TB_DIAG_1_1:1.19
+	FB_DIAG_1_1:1.19
+	TB_DIAG_1_0:1.19
+	DAR_V1_2_0_38:1.19
+	TB_0_8_0_0:1.19
+	KMC_1_0_2_6:1.19
+	TB_0_7_9_9:1.19
+	KMC_1_0_2_5:1.19
+	FB_BRANCH_1_0_0_3:1.19.0.26
+	FB_1_0_0_3:1.19
+	FB_1_0_0_2:1.19
+	FB_1_0_0_1:1.19
+	DAR_V1_2_0_34:1.19
+	FB_1_0_0_0:1.19
+	KMC_1_0_2_3:1.19
+	KMC_1_0_2_2:1.19
+	DAR_V1_2_0_31:1.19
+	FB_0_7_0_10:1.19
+	KMC_1_0_2_1:1.19
+	TB_V0_2_0_1:1.19
+	DAR_V1_2_0_29:1.19
+	PRIME:1.19.0.22
+	FB_0_6_0_9:1.19
+	FB_0_6_0_8:1.19
+	FB_0_6_0_6:1.19
+	KMC_1_0_1_1:1.19
+	library_decade_slot_problem:1.19
+	DAR_V1_2_0_24:1.19
+	FB_V0_5_0_2:1.19
+	FB_V0_5_0_1:1.19
+	KMC_1_0_1_0:1.19
+	KMC_1_0_0_5:1.19
+	FB_V0_4_0_8:1.19
+	FB_V0_4_0_6:1.19
+	KMC_1_0_0_4:1.19
+	DAR_DVD_1:1.19.0.20
+	FB_V0_4_0_4:1.19
+	DAR_V1_2_0_22:1.19
+	FB_V0_4_0_3:1.19
+	DAR_V1_2_0_21:1.19
+	DAR_V1_2_0_20:1.19
+	FB_V0_4_0_1:1.19
+	DAR_V1_2_0_18:1.19
+	DAR_V1_2_0_17:1.19
+	FB_V0_3_0_2:1.19
+	FB_V0_3_0_1:1.19
+	KMC_1_0_0_2:1.19
+	DAR_V1_2_0_15:1.19
+	KMC_V1_B2:1.19.0.14
+	FB_V0_2_0_1:1.19
+	FB_V0_1_0_9:1.19
+	KMC_1_0_0_1:1.19
+	FB_V0_1_0_5:1.19
+	FB_V0_1_0_4:1.19
+	KMC_0_9_0_5:1.19
+	KMC_0_9_0_4:1.19
+	DAR_V1_2_0_12:1.19
+	KMC_V1_B1:1.19.0.18
+	DAR_V1_2_0_10:1.19
+	DAR_V1_1_1_38:1.18.6.1
+	KMC_0_9_0_0:1.19
+	DAR_V1_1_1_36:1.18.6.1
+	KMC_0_3_0_2:1.19
+	DAR_V1_1_1_32:1.18.6.1
+	KMC-DIAGS:1.19.0.6
+	KMC-0_3_0_1:1.19
+	KMC-0_2_1_10:1.19
+	DAR_V1_1_1_31:1.18.6.1
+	KMC_0_2_1_8:1.19
+	DAR_V1_1_1_30:1.18.6.1
+	KMC_0_2_1_6:1.19
+	KMC_0_2_1_5:1.19
+	DAR_V1_1_1_25:1.18.6.1
+	FIREBALL_CEDIA_2001:1.19.0.4
+	DAR_V1_1_1_23:1.18.6.1
+	CEDIA_Sony_changer_demo_3:1.19
+	CEDIA_Sony_changer_demo_2:1.19
+	CEDIA_Sony_changer_demo_1:1.19
+	KMC_0_2_1_1:1.19
+	DAR_V1_1_1_20:1.18.6.1
+	KMC-0_2_0_9:1.19
+	DAR_V1_1_1_19:1.18.6.1
+	KMC-0_2_0_7:1.19
+	DAR_V1_1_1_18:1.18.6.1
+	DAR_V1_1_1_16:1.18.6.1
+	KMC-0_2_0_6:1.19
+	DAR_V1_1_1_15:1.18.6.1
+	KMC-BETA-RC1:1.19
+	DAR_V1_1_1_14:1.18.6.1
+	DAR_V1_1_1_12:1.18.6.1
+	KMC_ALPHA2_3_NEC_B1:1.19.0.2
+	DAR_V1_2_0_4:1.19
+	KMC_ALPHA2_3_RELEASE:1.19
+	DAR_V1_1_1_11:1.18.6.1
+	KMC_ALPHA2_1_RELEASE:1.19
+	KMC-ALPHA2-NEC:1.19.0.10
+	KMC_ALPHA2_B6:1.19.0.24
+	KMC_ALPHA2_RELEASE:1.19
+	KMC-NEC-IR2:1.19.0.16
+	LINUX_TEST_BRANCH:1.19.0.12
+	DAR_V1_1_1_5:1.18.6.1
+	KMC_V0_1_0_6_ALPHA1_6:1.19
+	KMC_V0_1_0_5_ALPHA1_5:1.19
+	KMC-NEC-IR:1.19.0.8
+	DAR_V1_1_1_2:1.18.6.1
+	DAR_V1_1_1_1:1.18.6.1
+	KMC_V0_1_0_4_ALPHA1:1.19
+	DAR_V1_1_0_34:1.18.6.1
+	DAR_1-1_RTM1:1.18.6.1.0.2
+	DAR_V1_2_0_1:1.19
+	DAR_V1_1_0_32:1.18.6.1
+	DAR_V1_1_0_31:1.18.6.1
+	DAR_V1_1_0_30:1.18.6.1
+	DAR_V1_1_0_29:1.18.6.1
+	DAR_1-1_BRANCH:1.18.0.6
+	DAR_V1_1_0_28:1.18
+	DAR_V1_1_0_27:1.18
+	KMC_V0_1_0_3:1.18
+	KMC_DEMO_B2-6:1.18.0.4
+	DAR_V1_1_0_26:1.17
+	DAR_V1_1_0_25:1.17
+	DAR_V1_0_1_2:1.15
+	DAR_V1_1_0_24:1.17
+	KMC_V0_1_0_1:1.17
+	DAR_V1_0_1_1:1.15
+	KMC_DEMO_B2:1.16
+	DAR_V1_1_0_23:1.16
+	DAR_V1_0_1_0:1.15
+	DAR_V1_1_0_20:1.16
+	DAR_V1_1_0_17:1.16
+	DAR-V1_1_0_15:1.16
+	DAR-V1_1_0_13:1.16
+	DAR_V1_1_0_12:1.16
+	KMC_V0_1_0_0:1.16
+	ps2001-04-03-1800-ddaly:1.16
+	DAR_V1_1_0_7:1.16
+	DAR_V1_1_0_6:1.16
+	ps2001-03-26-1730-ddaly:1.16
+	ACT_0_1_2_12:1.16
+	DAR_V1_1_0_4:1.16
+	DAR_V1_1_0_3:1.16
+	ps2001-03-20-1630-ddaly:1.16
+	DAR_V1_1_0_2_ALPHA:1.16
+	ACT_Demo_031701_RY:1.16
+	DAR_V1_0_0_6_RC:1.15
+	ps2001-03-13-1426-ddaly:1.16
+	STABLE:1.16
+	ps2001-03-12-1040:1.16
+	DAR_V1_0_0_5_RC:1.15
+	DAR_V1_0_0_4_RC:1.15
+	ps2001-03-06-1610:1.16
+	Mar06-2001:1.16
+	DAR_V1_0_0_3:1.15
+	DAR_V1_0_0_2:1.15
+	GNU3:1.16.0.4
+	GNUCOMPILE2:1.16.0.2
+	AFTERGNU:1.16
+	BEFOREGNU:1.15
+	DAR_V0_3_3_14_RELEASE_CANDIDATE:1.15
+	DAR_V0_5_1_2_PREALPHA:1.15
+	DAR_V0_3_3_13_BETA_V10_CANDIDATE:1.15
+	DAR_1-1_020701:1.15
+	DAR_1-0B2_DVD-iRADIO:1.15.0.6
+	DAR_V0_3_3_11_BETA-V10-CANDIDATE:1.15
+	DAR_V0_3_3_10_BETA_10_CANDIDATE:1.15
+	DAR_V0_3_3_9_BETA_1-0_CANDIDATE:1.15
+	DAR_1-1A-iRadio:1.15
+	DAR_V0_3_3_8:1.15
+	DAR_V0_3_3_7_RAP_DEMO:1.15
+	DAR-V0_3_3_6_PRE-BETA-RELEASE:1.15
+	DAR-V0_3_3_5:1.15
+	DAR-V0_3_3_4:1.15
+	DAR_V0_3_3_3:1.15
+	DAR_V0_3_3_2_PRE-BETA-Release:1.15
+	DAR_V0_3_2_5:1.15
+	DAR_1-0B2:1.15.0.4
+	DAR_V0_3_2_4:1.15
+	DAR_V0_3_2_3:1.15
+	DAR_V0_3_2_2:1.15
+	DAR_V0_3_2_1:1.15
+	t2001-01-19-1015:1.15
+	DAR_BETA1B_LSR_WORKING:1.15
+	t2001-01-18-1853:1.15
+	t2001-01-18-0957:1.15
+	t2001-01-17-1015:1.15
+	DAR_1-0_BETA_V0_3_1_1:1.15
+	t2001-01-16-1505:1.15
+	t2001-01-16-1330:1.15
+	t2001-01-16-1225:1.15
+	t2001-01-16-1116:1.15
+	t2001-01-16-0955:1.15
+	DAR_1-0B:1.15.0.2
+	DAR_1-0B_BRANCH_ROOT:1.15
+	t2001-01-15-0957:1.14
+	t2001-01-12-1800:1.14
+	t2001-01-12-1028:1.14
+	t2001-01-12-0925:1.14
+	t2001-01-11-1802:1.13
+	t2001-01-11-1525:1.13
+	t2001-01-11-1230:1.13
+	t2001-01-10-1013:1.13
+	t2001-01-09-1021:1.13
+	t2001-01-08-1136:1.10.2.1
+	ACT-CES-CANDIDATE-V0_1_2_9:1.13
+	ACT-CES-CANDIDATE-V0_1_2_8:1.13
+	t2001-01-05-1638:1.10.2.1
+	ACT-CES-CANDIDATE-V0_1_2_7:1.13
+	t2001-01-05-1016:1.13
+	ACT-CES-CANDIDATE-V0_1_2_6:1.13
+	ACT-CES-CANIDATE-V0_1_2_5:1.13
+	GNUCOMPILE:1.13.0.4
+	DAR-CES-CANDIDATE-V0_1_2_6:1.13
+	ACT-CES-CANDIDATE-V0_1_2_3:1.13
+	DAR-ON-ACT-CES1:1.13
+	DAR-CES-CANDIDATE-V0_1_2_4:1.13
+	DAR-CES-CANDIDATE-V0_1_2_3:1.13
+	t2001-01-02-0948:1.13
+	DAR-CES-CANDIDATE-4-V0_1_1_5:1.13
+	DAR-CES:1.13.0.2
+	DAR-CES-CANDIDATE-3-V0_1_1_5:1.13
+	CES_Candidate_twd_1042p_12292000:1.13
+	t2000-12-29-1038:1.13
+	t2000-12-28-1853:1.13
+	DAR_CES_Candidate_2_12-27-2000:1.13
+	t2000-12-27-1024:1.13
+	t2000-12-22-1725:1.13
+	DAR_PRE_CES_1_V0_1_1_1:1.13
+	t2000-12-22-1500:1.13
+	t2000-12-20-1908:1.13
+	DAR_CES_Candidate_1_12-20-2000:1.13
+	t2000-12-20-1756:1.13
+	t2000-12-19-0941:1.13
+	t2000-12-18-0957:1.13
+	t2000-12-16-1701:1.13
+	t2000-12-15-1901:1.13
+	t2000-12-15-0933:1.13
+	t2000-12-13-1757:1.13
+	t2000-12-14-0957:1.13
+	DAR-ALPHA-CANDIDATE-7-V0_1_0_13:1.10.2.1
+	t2000-12-13-0944:1.13
+	DAR-ALPHA-CANDIDATE-6-V0_1_0_12:1.10.2.1
+	DAR-ALPHA-CANDIDATE-5-V0_1_0_11:1.10.2.1
+	DAR-ALPHA-CANDIDATE-4:1.10.2.1
+	t2000-12-08-0924:1.10.2.1
+	t2000-12-07-1802:1.10.2.1
+	t2000-12-07-0950:1.13
+	t2000-12-05-1955:1.13
+	DVD-ACTREVB-12-4-00-SP:1.12
+	t2000-12-04-1700:1.12
+	t2000-12-01-1800:1.12
+	t2000-11-30-1425:1.12
+	DVD-ACT-REVA:1.12
+	DAR-ALPHA-CANDIDATE-3:1.10.2.1
+	TRUNK-MERGE-1:1.10.2.1
+	DAR-ALPHA-CANDIDATE-2:1.10.2.1
+	t2000-11-27-1723:1.10.2.1
+	DAR-ALPHA-CANDIDATE-1:1.10.2.1
+	DAR-PRE-ALPHA-RELEASE:1.10.2.1
+	DAR_PREALPHA_CANDIDATE1:1.10.2.1
+	DVD-Build1-11-21-00-SP:1.11
+	t2000-11-20-1734:1.10.2.1
+	t2000-11-18-1336:1.10.2.1
+	t2000-11-17-1858:1.10.2.1
+	t2000-11-16-1137:1.10.2.1
+	DVD-Attempt:1.11
+	t2000-11-15-1710:1.10.2.1
+	t2000-11-14-2055:1.10.2.1
+	t2000-11-13-1717:1.10.2.1
+	t2000-11-11-1100-dd-pSH-Loader:1.10.2.1
+	t2000-11-11-1324:1.10.2.1
+	t2000-11-10-1050-dd-pSH-Loader:1.10.2.1
+	t2000-11-10-0822:1.10.2.1
+	t2000-11-09-1455:1.10
+	t2000-11-09-0933:1.10
+	DAR_1-0_1106200_TRUNK_VERSION_TAG:1.10
+	DAR_1-0:1.10.0.2
+	t2000-11-05-1520-RY:1.10
+	t2000-11-03-1538-RY:1.10
+	t2000-11-03-1340:1.10
+	t2000-11-03-0950:1.10
+	t2000-11-02-1802:1.10
+	t2000-11-02-1346:1.10
+	t2000-11-02-0911:1.10
+	t2000-11-01-1317:1.10
+	t2000-11-01-0931:1.10
+	t2000-10-31-1545:1.10
+	t2000-10-31-0920:1.10
+	t2000-10-30-0920:1.10
+	t2000-10-24-1730:1.9
+	t2000-10-24-1413:1.9
+	t2000-10-24-0931:1.9
+	t2000-10-23-1350:1.9
+	t2000-10-23-0946:1.9
+	t2000-10-20-1800:1.9
+	t2000-10-20-0921:1.9
+	t2000-10-19-1558:1.8
+	t2000-10-19-0919:1.8
+	t2000-10-18-1306:1.8
+	t2000-10-18-0920:1.8
+	t2000-10-17-1407:1.8
+	t2000-10-17-0930:1.8
+	t2000-10-16-0932:1.7
+	t2000-10-13-1411:1.7
+	t2000-10-13-0945-dd-pSH-Loader:1.7
+	t2000-10-13-0926:1.7
+	t2000-10-12-0941:1.7
+	t2000-10-11-1158:1.7
+	t2000-10-11-1019:1.7
+	t2000-10-10-0944:1.7
+	t2000-10-09-1024:1.7
+	t2000-10-06-1730:1.7
+	t2000-10-05-1727:1.7
+	t2000-10-04-1204-lsr-memprint_breaks_ACTA:1.7
+	t2000-10-04-1130:1.7
+	b2000-10-02-08-42-tocompaq:1.7
+	t2000-09-25-1602-klp-works_on_DAR_2X:1.7
+	DAR-2X-TEST:1.6.0.2
+	r2000-09-21-2124:1.6
+	r2000-09-16-1200:1.6
+	Branch_9_7_2000_DEMO:1.6.0.4
+	r2000-09-06-0211:1.6
+	r2000-09-05-1715:1.6
+	r2000-09-05-1340:1.6
+	r2000-09-04-2104:1.6
+	r2000-08-29-2101:1.5
+	r2000-08-29-0846:1.5
+	r2000-08-25-1100:1.5
+	r2000-08-24-2330:1.5
+	r2000-08-24-0705:1.5
+	r2000-08-22-0910:1.5
+	r2000-08-18-1800-to-Compaq:1.5
+	r2000-08-18-1230:1.5
+	r2000-08-17-0106:1.5
+	r2000-08-15-2259:1.5
+	r2000-08-15-1007:1.5
+	DAR1C_RELEASE_8112000:1.5
+	r2000-08-11-0720:1.5
+	DARonACT-2000-08-09-1045:1.5
+	r2000-08-10-0800:1.5
+	BUILD_1C_PreRelease1:1.5;
+locks; strict;
+comment	@# @;
+
+
+1.21
+date	2002.08.07.20.13.05;	author jef;	state Exp;
+branches;
+next	1.20;
+
+1.20
+date	2002.07.09.23.09.24;	author jef;	state Exp;
+branches;
+next	1.19;
+
+1.19
+date	2001.06.07.20.34.57;	author bbouterse;	state Exp;
+branches;
+next	1.18;
+
+1.18
+date	2001.05.23.19.15.32;	author stenpas;	state Exp;
+branches
+	1.18.6.1;
+next	1.17;
+
+1.17
+date	2001.05.11.19.33.45;	author jkaisner;	state Exp;
+branches;
+next	1.16;
+
+1.16
+date	2001.02.23.14.40.10;	author dstern;	state Exp;
+branches;
+next	1.15;
+
+1.15
+date	2001.01.15.20.39.27;	author wrk;	state Exp;
+branches;
+next	1.14;
+
+1.14
+date	2001.01.12.01.47.47;	author stenpas;	state Exp;
+branches;
+next	1.13;
+
+1.13
+date	2000.12.05.22.00.56;	author jkaisner;	state Exp;
+branches
+	1.13.4.1;
+next	1.12;
+
+1.12
+date	2000.11.28.06.47.29;	author wrk;	state Exp;
+branches;
+next	1.11;
+
+1.11
+date	2000.11.10.14.19.26;	author stenpas;	state Exp;
+branches;
+next	1.10;
+
+1.10
+date	2000.10.30.21.53.16;	author gvt;	state Exp;
+branches
+	1.10.2.1;
+next	1.9;
+
+1.9
+date	2000.10.20.02.37.43;	author wrk;	state Exp;
+branches;
+next	1.8;
+
+1.8
+date	2000.10.16.20.15.46;	author stenpas;	state Exp;
+branches;
+next	1.7;
+
+1.7
+date	2000.09.22.17.55.49;	author gvt;	state Exp;
+branches;
+next	1.6;
+
+1.6
+date	2000.08.30.16.30.33;	author wrk;	state Exp;
+branches;
+next	1.5;
+
+1.5
+date	2000.07.29.17.07.02;	author stenpas;	state Exp;
+branches;
+next	1.4;
+
+1.4
+date	2000.07.27.03.37.48;	author gvt;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	2000.07.26.20.35.23;	author stenpas;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2000.04.27.15.28.03;	author gvt;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2000.04.25.19.07.24;	author gvt;	state Exp;
+branches;
+next	;
+
+1.10.2.1
+date	2000.11.10.02.08.21;	author stenpas;	state Exp;
+branches;
+next	;
+
+1.13.4.1
+date	2001.01.09.21.54.52;	author dstern;	state Exp;
+branches;
+next	;
+
+1.18.6.1
+date	2001.06.11.16.39.07;	author wkassebaum;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.21
+log
+@Move trunk back over to v2 stack, but with v3 hal.
+@
+text
+@#!/bin/bash
+#--------------------------------------------------------------------------
+# buildpss.ksh
+#
+# $Id: buildpss.ksh,v 1.20 2002/07/09 23:09:24 jef Exp $
+#
+# This script still relies on the MKS Korn shell and related pSOSystem
+# support scripts.
+#
+# Ideally, we want to pull this out of the whole ISIPPC/MKS/SNIFF mess!!
+#
+# For now, assuming you have the ISIPPC tools set (other than the
+# pssppc directory), run this shell script from the pSOS DOS prompt
+# or the pSOS KSH prompt from the pssppc top directory.
+#
+# This will build the following pSOSystem libraries:
+#  - The pSOSystem C system library: pssppc\sys\os\libsys.a
+#  - The pSOSystem C++ library:      pssppc\sys\libc\libcxxsp.a
+#  - The bsp library (libbsp.a) for every bsp found in the
+#  pssppc\bsps directory
+#
+#
+# Created 04/25/200 by GVT.
+# Modified 04/27/2000 by GVT
+#--------------------------------------------------------------------------
+
+#--------------------------------------------------------------------------
+# Added 04/27/2000 - GVT
+#
+# Pull in required environment variables for Prism+ installation:
+#
+# This script assumes it is being run under the pSOS DOS ar KSH prompt
+# where the $PRISM_INSTALL_DIR (at least) is set.
+#--------------------------------------------------------------------------
+
+
+echo Setting environment...
+echo $PRISM_INSTALL_DIR
+
+echo $CONFIG_PPC_GNU_LINUX
+
+if [ "$CONFIG_PPC_GNU_LINUX" != "y" ]; then
+
+  if [ -f "`'VarDosToUnix' PRISM_INSTALL_DIR`/envppc.ksh" ]
+  then
+	echo . "$PRISM_INSTALL_DIR\envppc.ksh"
+  else
+	echo "Error: Cannot determine Prism+ installation directory - Exiting."
+	exit 1
+  fi
+fi
+
+#--------------------------------------------------------------------------
+# Set PSS_ROOT to this directory (top directory for our pssppc build tree)
+#--------------------------------------------------------------------------
+PSS_ROOT=`pwd`
+
+#--------------------------------------------------------------------------
+# Ammend path so that we use the local copies of the pSOS shell scripts
+# and make executable:
+#   sysobj.ksh, psosmake.ksh, make, ...
+#--------------------------------------------------------------------------
+if [ "$CONFIG_PPC_GNU_LINUX" != "y" ]; then
+  PATH="$PSS_ROOT/bin;$PSS_ROOT/bin/win32;$PATH"
+else
+  PATH="$PSS_ROOT/bin:$PATH"
+fi
+
+#--------------------------------------------------------------------------
+# Spit out some build environment information - just a visual build
+# verification/debug aid.
+#--------------------------------------------------------------------------
+echo
+echo Build environment information:
+echo -----------------------------
+echo "  "Prism directory:"       "using $PRISM_INSTALL_DIR
+echo "  "pSOSystem directory:"   "using $PSS_ROOT
+if [ "$CONFIG_PPC_GNU_LINUX" != "y" ]; then
+  echo "  "Compiler information:"  "`dcc -V | grep Rel`
+  echo "  "Linker information:"    "`dld -V | grep Rel`
+else
+  echo "  "Compiler information:"  "`dcc --version`
+  echo "  "Linker information:"    "`dld --version | grep ld`
+fi
+
+echo
+
+#--------------------------------------------------------------------------
+# Build all available BSPs
+#--------------------------------------------------------------------------
+export SYSNAME
+export MEMSIZE
+	
+
+if test "$1" = ""
+then
+	echo ================================================================
+	echo "   ERROR: No board type specified on command line."
+	echo ================================================================
+	echo "Usage: buildpss TYPE MEMSIZE MACADDR "
+	echo "   TYPE    = DAR|DAR_B|DAR_C|ACT|ACT_B"
+	echo "   MEMSIZE = 16M|32M"
+	echo "   MACADDR = AA:BB:CC:DD:EE:FF  (a locally unique HW addr)"
+	echo 
+	exit 
+else
+	SYSNAME=$1
+fi
+echo ================================================================
+echo
+echo "   Building BSP for ** "$SYSNAME" ** board"
+#echo ================================================================
+
+
+if test "$2" = ""
+then
+	echo ================================================================
+	echo "   ERROR: No MEMSIZE specified on command line."
+	echo ================================================================
+	echo "Usage: buildpss TYPE MEMSIZE MACADDR "
+	echo "   TYPE    = DAR|DAR_B|DAR_C|ACT|ACT_B"
+	echo "   MEMSIZE = MEM_SIZE_24and0"
+	echo "   MACADDR = AA:BB:CC:DD:EE:FF  (a locally unique HW addr)"
+	echo 
+	exit 
+else
+	MEMSIZE=$2
+fi
+#echo "======================================================================="
+echo  "   Memory size is $MEMSIZE"
+#echo "======================================================================="
+
+export MAC_ADDRESS
+if test "$3" = ""
+then
+		if test "$MY_TARGET_MAC_ADDRESS" = ""
+	then
+		echo " ERROR :==============================================================="
+		echo " No MAC Address specified - using default (non-unique) address."
+		echo " This may cause network problems if you are building for use with SDS."
+		echo "======================================================================="
+		echo "Usage: buildpss TYPE MEMSIZE MACADDR"
+		echo "   TYPE    = DAR|DAR_B|DAR_C|ACT|ACT_B"
+		echo "   MEMSIZE = 0|1  -- > 0 = 16M, 1 = 32M "
+		echo "   MACADDR = AA:BB:CC:DD:EE:FF  (a locally unique HW addr)"
+		echo "  OR "
+		echo "   You may also set your MAC Address by setting an environment variable:"
+		echo "   Set the Variable 'MY_TARGET_MAC_ADDRESS' to a hex sextuple as above. "
+		exit
+	else
+		MAC_ADDRESS=$MY_TARGET_MAC_ADDRESS
+		echo "   Building for MAC Address = $MAC_ADDRESS"
+		echo
+		echo "======================================================================="
+	fi
+else
+	MAC_ADDRESS=$3
+	echo "   Building for MAC Address = $MAC_ADDRESS"
+	echo
+	echo "======================================================================="
+fi
+
+export IF_TYPE
+if test "$4" = ""; then
+	echo "	 ERROR: No network interface type specified - ethernet or HPNA"
+	exit 1
+else 
+	if test "$4" = "ethernet"; then  # Ethernet
+	
+		IF_TYPE=1
+	else  							 # HPNA
+		IF_TYPE=2
+	fi
+fi
+	
+
+
+#--------------------------------------------------------------------------
+# Build pSOSystem C libraries 
+#--------------------------------------------------------------------------
+echo Starting build process:
+echo ----------------------
+echo Building the pSOSystem C system library...
+
+if [ "$CONFIG_PPC_GNU_LINUX" != "y" ]; then
+  cd "`'VarDosToUnix' PSS_ROOT`/sys/os"
+else
+  cd $PSS_ROOT/sys/os
+fi
+echo Current directory is `pwd`
+
+if [ "$CONFIG_PPC_GNU_LINUX" != "y" ]; then
+  echo Running `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+  `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+else
+  echo Running make
+  make
+fi
+
+#--------------------------------------------------------------------------
+# Build Custom pSOSystem C libraries 
+#--------------------------------------------------------------------------
+echo 
+echo ----------------------
+echo Building the Custom pSOSystem C system libraries...
+
+if [ "$CONFIG_PPC_GNU_LINUX" != "y" ]; then
+  cd "`'VarDosToUnix' PSS_ROOT`/sys/libc"
+else
+  cd $PSS_ROOT/sys/libc
+fi
+echo Current directory is `pwd`
+
+if [ "$CONFIG_PPC_GNU_LINUX" != "y" ]; then
+  echo Running `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+  `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+else
+  echo Running make
+  make
+fi
+
+#--------------------------------------------------------------------------
+# Build pSOSystem C++ libraries 
+#--------------------------------------------------------------------------
+echo 
+echo ----------------------
+echo Building the pSOSystem C++ system library...
+
+if [ "$CONFIG_PPC_GNU_LINUX" != "y" ]; then
+  if [ "`'VarDosToUnix' PSS_ROOT`/sys/libc/src/sysclass/makefile" ]
+  then
+    cd "`'VarDosToUnix' PSS_ROOT`/sys/libc/src/sysclass"
+    echo Current directory is `pwd`
+    
+    echo Running `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+    `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+  fi
+else
+  cd $PSS_ROOT/sys/libc/src/sysclass
+  echo Current directory is `pwd`
+  make
+fi
+
+
+#--------------------------------------------------------------
+# Build eureka bsp only (instead of all under bsps/.)
+#--------------------------------------------------------------
+#for arg in `VarDosToUnix PSS_ROOT`/bsps/*/src/makefile
+#do
+#  echo Building BSP library for `dirname $arg`...
+#
+#  cd `dirname $arg`
+#  echo Current directory is `pwd`
+#
+#  echo Running `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+#  `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+#done
+
+if [ "$CONFIG_PPC_GNU_LINUX" != "y" ]; then
+  if [ "`VarDosToUnix PSS_ROOT`/bsps/eureka/src/makefile" ]
+  then
+    echo Building BSP library for `VarDosToUnix PSS_ROOT`/bsps/eureka/src...
+  
+    cd "`VarDosToUnix PSS_ROOT`/bsps/eureka/src"
+    echo Current directory is `pwd`
+
+    echo Running `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+    `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+  fi
+else
+    echo Building BSP library for $PSS_ROOT/bsps/eureka/src...
+    cd $PSS_ROOT/bsps/eureka/src
+    echo Current directory is `pwd`
+    make clean
+    make
+fi
+
+if [ "$CONFIG_PPC_GNU_LINUX" != "y" ]; then
+  if [ "`VarDosToUnix PSS_ROOT`/bsps/eureka/src/devices/usb_v2/makefile" ]
+  then
+    echo Building USB Stack library for `VarDosToUnix PSS_ROOT`/bsps/eureka/src/devices/usb_v2...
+  
+#    cd "`VarDosToUnix PSS_ROOT`/bsps/eureka/src/devices/usb_v2"
+    cd "`VarDosToUnix PSS_ROOT`/bsps/eureka/src/devices/usb_v2"
+    echo Current directory is `pwd`
+  
+    echo Running `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u 
+    `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u 
+  fi
+else
+  echo Building USB Stack library for $PSS_ROOT/bsps/eureka/src/devices/usb_v2...
+  cd $PSS_ROOT/bsps/eureka/src/devices/usb_v2
+
+  make clean
+  make 
+fi
+
+#
+# $Log: buildpss.ksh,v $
+# Revision 1.20  2002/07/09 23:09:24  jef
+# Beautify the Intoto code to make it readable.
+# Move the trunk over to the new Intoto usb_v2 stack for now.
+#
+# Revision 1.19  2001/06/07 20:34:57  bbouterse
+# Modified to build custom clib files in pssppc/sys/libc .
+#
+# Revision 1.18  2001/05/23 19:15:32  stenpas
+# force rebuild of bsp and usb libraries evertime to fix build problems due to the bsp not being upto date.
+#
+# Revision 1.17  2001/05/11 19:33:45  jkaisner
+# Switch to new Intoto stack
+#
+# Revision 1.16  2001/02/23 14:40:10  dstern
+# Merged the GNUCOMPILE branch with the trunc!!
+#
+# Revision 1.15  2001/01/15 20:39:27  wrk
+# Added/modified the build scripts to include the ethernet/HPNA selection
+# made during configuration so that it can be used to configure the
+# default network interface for use with debugging. -Will
+#
+# Revision 1.14  2001/01/12 01:47:47  stenpas
+# Removed building of video/audio related libraries.  This is now included in the BSP.
+#
+# Revision 1.13.4.1  2001/01/09 21:54:52  dstern
+# changes for GNU compiler
+#
+# Revision 1.13  2000/12/05 22:00:56  jkaisner
+# add USB stack to app
+#
+# Revision 1.12  2000/11/28 06:47:29  wrk
+# Merge has been completed from the DAR_1-0 Branch back to the trunk.
+# There is one syntax error in the GUI code which appears to be easy to solve.
+# I have resolved to commit this anyway so that others may fix this up
+# first thing in the morning.  -Will
+#
+# Revision 1.11  2000/11/10 14:19:26  stenpas
+# Added 24/0 MB support
+#
+# Revision 1.10.2.1  2000/11/10 02:08:21  stenpas
+# 24MB/0 memory support added.
+#
+# Revision 1.10  2000/10/30 21:53:16  gvt
+# Removed erroneous redundant build of eureka bsp
+#   -GVT, 10/30/2000
+#
+# Revision 1.9  2000/10/20 02:37:43  wrk
+# Module Loader changes. Include changes to the make config target
+# to control conditional compile of the module loader and module
+# candidate subsystems.  Also, include changes to allow MP3_Player to
+# be compiled as a Module -- MP3_Player.app. Also, includes
+# changes to the 32Meg/16Meg development flags to allow both
+# source and pssppc trees to see the board.h head through the
+# same MEM_SIZE define and ties together the config option for
+# building for a 32M developer board.  No change yet for building
+# with alternate ram.dld for RTC. (FYI)
+# Also, added properties for starting up subsystems .. can
+# set stack size and priority via property.  -Will
+#
+# Revision 1.8  2000/10/16 20:15:46  stenpas
+# Added 32MB build option
+#
+# Revision 1.7  2000/09/22 17:55:49  gvt
+# Added support for Dar rev C BSP (defined as DAR_C).
+# GVT - 09/22/2000
+#
+# Revision 1.6  2000/08/30 16:30:33  wrk
+# THe rest of the files for supporting the new build process -Will
+#
+#
+@
+
+
+1.20
+log
+@Beautify the Intoto code to make it readable.
+Move the trunk over to the new Intoto usb_v3 stack for now.
+@
+text
+@d5 1
+a5 1
+# $Id: buildpss.ksh,v 1.19 2001/06/07 20:34:57 bbouterse Exp $
+d279 1
+a279 1
+  if [ "`VarDosToUnix PSS_ROOT`/bsps/eureka/src/devices/usb_v3/makefile" ]
+d281 1
+a281 1
+    echo Building USB Stack library for `VarDosToUnix PSS_ROOT`/bsps/eureka/src/devices/usb_v3...
+d283 2
+a284 2
+#    cd "`VarDosToUnix PSS_ROOT`/bsps/eureka/src/devices/usb_v3"
+    cd "`VarDosToUnix PSS_ROOT`/bsps/eureka/src/devices/usb_v3"
+d291 2
+a292 2
+  echo Building USB Stack library for $PSS_ROOT/bsps/eureka/src/devices/usb_v3...
+  cd $PSS_ROOT/bsps/eureka/src/devices/usb_v3
+d300 4
+@
+
+
+1.19
+log
+@Modified to build custom clib files in pssppc/sys/libc .
+@
+text
+@d5 1
+a5 1
+# $Id: buildpss.ksh,v 1.18 2001/05/23 19:15:32 stenpas Exp $
+d279 1
+a279 1
+  if [ "`VarDosToUnix PSS_ROOT`/bsps/eureka/src/devices/usb/makefile" ]
+d281 1
+a281 1
+    echo Building USB Stack library for `VarDosToUnix PSS_ROOT`/bsps/eureka/src/devices/usb...
+d283 2
+a284 2
+#    cd "`VarDosToUnix PSS_ROOT`/bsps/eureka/src/devices/usb"
+    cd "`VarDosToUnix PSS_ROOT`/bsps/eureka/src/devices/usb_v2"
+d291 2
+a292 2
+  echo Building USB Stack library for $PSS_ROOT/bsps/eureka/src/devices/usb...
+  cd $PSS_ROOT/bsps/eureka/src/devices/usb_v2
+d300 3
+@
+
+
+1.18
+log
+@force rebuild of bsp and usb libraries evertime to fix build problems due to the bsp not being upto date.
+@
+text
+@d5 1
+a5 1
+# $Id: buildpss.ksh,v 1.17 2001/05/11 19:33:45 jkaisner Exp $
+d200 21
+d225 2
+d300 3
+@
+
+
+1.18.6.1
+log
+@Adding Bob's DNS changes to the branch -Will
+@
+text
+@d5 1
+a5 1
+# $Id: buildpss.ksh,v 1.19 2001/06/07 20:34:57 bbouterse Exp $
+a199 21
+#--------------------------------------------------------------------------
+# Build Custom pSOSystem C libraries 
+#--------------------------------------------------------------------------
+echo 
+echo ----------------------
+echo Building the Custom pSOSystem C system libraries...
+
+if [ "$CONFIG_PPC_GNU_LINUX" != "y" ]; then
+  cd "`'VarDosToUnix' PSS_ROOT`/sys/libc"
+else
+  cd $PSS_ROOT/sys/libc
+fi
+echo Current directory is `pwd`
+
+if [ "$CONFIG_PPC_GNU_LINUX" != "y" ]; then
+  echo Running `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+  `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+else
+  echo Running make
+  make
+fi
+a203 2
+echo 
+echo ----------------------
+a276 6
+# Revision 1.19  2001/06/07 20:34:57  bbouterse
+# Modified to build custom clib files in pssppc/sys/libc .
+#
+# Revision 1.18  2001/05/23 19:15:32  stenpas
+# force rebuild of bsp and usb libraries evertime to fix build problems due to the bsp not being upto date.
+#
+@
+
+
+1.17
+log
+@Switch to new Intoto stack
+@
+text
+@d5 1
+a5 1
+# $Id: buildpss.ksh,v 1.16 2001/02/23 14:40:10 dstern Exp $
+d251 1
+a268 1
+#  cd $PSS_ROOT/bsps/eureka/src/devices/usb
+d270 3
+a272 1
+  make
+d277 3
+@
+
+
+1.16
+log
+@Merged the GNUCOMPILE branch with the trunc!!
+@
+text
+@d5 1
+a5 1
+# $Id: buildpss.ksh,v 1.15 2001/01/15 20:39:27 wrk Exp $
+d259 2
+a260 1
+    cd "`VarDosToUnix PSS_ROOT`/bsps/eureka/src/devices/usb"
+d268 2
+a269 1
+  cd $PSS_ROOT/bsps/eureka/src/devices/usb
+d275 3
+@
+
+
+1.15
+log
+@Added/modified the build scripts to include the ethernet/HPNA selection
+made during configuration so that it can be used to configure the
+default network interface for use with debugging. -Will
+@
+text
+@d1 1
+d5 1
+a5 1
+# $Id: buildpss.ksh,v 1.14 2001/01/12 01:47:47 stenpas Exp $
+d40 6
+a45 2
+if [ -f "`'VarDosToUnix' PRISM_INSTALL_DIR`/envppc.ksh" ]
+then
+d47 1
+a47 1
+else
+d50 1
+d63 5
+a67 1
+PATH="$PSS_ROOT/bin;$PSS_ROOT/bin/win32;$PATH"
+d78 8
+a85 2
+echo "  "Compiler information:"  "`dcc -V | grep Rel`
+echo "  "Linker information:"    "`dld -V | grep Rel`
+d185 5
+a189 1
+cd "`'VarDosToUnix' PSS_ROOT`/sys/os"
+d192 8
+a199 2
+echo Running `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+`VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+d206 11
+a216 3
+if [ "`'VarDosToUnix' PSS_ROOT`/sys/libc/src/sysclass/makefile" ]
+then
+  cd "`'VarDosToUnix' PSS_ROOT`/sys/libc/src/sysclass"
+d218 1
+a218 3
+  
+  echo Running `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+  `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+d236 7
+a242 3
+if [ "`VarDosToUnix PSS_ROOT`/bsps/eureka/src/makefile" ]
+then
+  echo Building BSP library for `VarDosToUnix PSS_ROOT`/bsps/eureka/src...
+d244 8
+a251 5
+  cd "`VarDosToUnix PSS_ROOT`/bsps/eureka/src"
+  echo Current directory is `pwd`
+
+  echo Running `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+  `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+d254 15
+a268 9
+if [ "`VarDosToUnix PSS_ROOT`/bsps/eureka/src/devices/usb/makefile" ]
+then
+  echo Building USB Stack library for `VarDosToUnix PSS_ROOT`/bsps/eureka/src/devices/usb...
+
+  cd "`VarDosToUnix PSS_ROOT`/bsps/eureka/src/devices/usb"
+  echo Current directory is `pwd`
+
+  echo Running `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u 
+  `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u 
+a270 1
+
+d273 5
+d280 3
+@
+
+
+1.14
+log
+@Removed building of video/audio related libraries.  This is now included in the BSP.
+@
+text
+@d4 1
+a4 1
+# $Id: buildpss.ksh,v 1.13 2000/12/05 22:00:56 jkaisner Exp $
+d147 13
+d229 3
+@
+
+
+1.13
+log
+@add USB stack to app
+@
+text
+@d4 1
+a4 1
+# $Id: buildpss.ksh,v 1.12 2000/11/28 06:47:29 wrk Exp $
+a212 145
+for arg in `VarDosToUnix PSS_ROOT`/apps/vesta/stbdev/adecod/makefile
+do
+  echo Building audio decoder library ...
+
+  cd `dirname $arg`
+  echo Current directory is `pwd`
+
+  echo Running `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+  `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+
+done
+
+for arg in `VarDosToUnix PSS_ROOT`/apps/vesta/stbdev/vdecod/makefile
+do
+  echo Building video decoder library ...
+
+  cd `dirname $arg`
+  echo Current directory is `pwd`
+
+  echo Running `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+  `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+
+done
+
+for arg in `VarDosToUnix PSS_ROOT`/apps/vesta/stbdev/xp/makefile
+do
+  echo Building xp library ...
+
+  cd `dirname $arg`
+  echo Current directory is `pwd`
+
+  echo Running `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+  `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+
+done
+
+for arg in `VarDosToUnix PSS_ROOT`/apps/vesta/demo/menus/makefile
+do
+  echo Building menus library ...
+
+  cd `dirname $arg`
+  echo Current directory is `pwd`
+
+  echo Running `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+  `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+
+done
+
+for arg in `VarDosToUnix PSS_ROOT`/apps/vesta/clibext/makefile
+do
+  echo Building clibext library ...
+
+  cd `dirname $arg`
+  echo Current directory is `pwd`
+
+  echo Running `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+  `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+
+done
+
+
+for arg in `VarDosToUnix PSS_ROOT`/apps/vesta/stbdev/graphics/makefile
+do
+  echo Building graphics library ...
+
+  cd `dirname $arg`
+  echo Current directory is `pwd`
+
+  echo Running `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+  `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+
+done
+
+for arg in `VarDosToUnix PSS_ROOT`/apps/vesta/lllib/makefile
+do
+  echo Building lllib library ...
+
+  cd `dirname $arg`
+  echo Current directory is `pwd`
+
+  echo Running `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+  `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+
+done
+
+for arg in `VarDosToUnix PSS_ROOT`/apps/vesta/stbdev/osd/makefile
+do
+  echo Building osd library ...
+
+  cd `dirname $arg`
+  echo Current directory is `pwd`
+
+  echo Running `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+  `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+
+done
+
+for arg in `VarDosToUnix PSS_ROOT`/apps/vesta/stbdev/rawir/makefile
+do
+  echo Building rawir library ...
+
+  cd `dirname $arg`
+  echo Current directory is `pwd`
+
+  echo Running `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+  `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+
+done
+
+for arg in `VarDosToUnix PSS_ROOT`/apps/vesta/stbdev/serialcp/makefile
+do
+  echo Building serialcp library ...
+
+  cd `dirname $arg`
+  echo Current directory is `pwd`
+
+  echo Running `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+  `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+
+done
+
+for arg in `VarDosToUnix PSS_ROOT`/apps/vesta/stbdev/opticdvr/makefile
+do
+  echo Building optic library ...
+
+  cd `dirname $arg`
+  echo Current directory is `pwd`
+
+  echo Running `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+  `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+
+done
+
+
+for arg in `VarDosToUnix PSS_ROOT`/apps/vesta/MIDWARE/openTV/xp/makefile
+do
+  echo Building opentv library ...
+
+  cd `dirname $arg`
+  echo Current directory is `pwd`
+
+  echo Running `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+  `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+
+done
+d216 3
+@
+
+
+1.13.4.1
+log
+@changes for GNU compiler
+@
+text
+@a0 1
+#!/bin/bash
+d4 1
+a4 1
+# $Id: buildpss.ksh,v 1.13 2000/12/05 22:00:56 jkaisner Exp $
+d39 2
+a40 6
+echo $CONFIG_PPC_GNU_LINUX
+
+if [ "$CONFIG_PPC_GNU_LINUX" != "y" ]; then
+
+  if [ -f "`'VarDosToUnix' PRISM_INSTALL_DIR`/envppc.ksh" ]
+  then
+d42 1
+a42 1
+  else
+a44 1
+  fi
+d57 1
+a57 5
+if [ "$CONFIG_PPC_GNU_LINUX" != "y" ]; then
+  PATH="$PSS_ROOT/bin;$PSS_ROOT/bin/win32;$PATH"
+else
+  PATH="$PSS_ROOT/bin:$PATH"
+fi
+d68 2
+a69 8
+if [ "$CONFIG_PPC_GNU_LINUX" != "y" ]; then
+  echo "  "Compiler information:"  "`dcc -V | grep Rel`
+  echo "  "Linker information:"    "`dld -V | grep Rel`
+else
+  echo "  "Compiler information:"  "`dcc --version`
+  echo "  "Linker information:"    "`dld --version | grep ld`
+fi
+
+d156 1
+a156 5
+if [ "$CONFIG_PPC_GNU_LINUX" != "y" ]; then
+  cd "`'VarDosToUnix' PSS_ROOT`/sys/os"
+else
+  cd $PSS_ROOT/sys/os
+fi
+d159 2
+a160 8
+if [ "$CONFIG_PPC_GNU_LINUX" != "y" ]; then
+  echo Running `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+  `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+else
+  echo Running make
+  make
+fi
+
+d167 3
+a169 11
+if [ "$CONFIG_PPC_GNU_LINUX" != "y" ]; then
+  if [ "`'VarDosToUnix' PSS_ROOT`/sys/libc/src/sysclass/makefile" ]
+  then
+    cd "`'VarDosToUnix' PSS_ROOT`/sys/libc/src/sysclass"
+    echo Current directory is `pwd`
+    
+    echo Running `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+    `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+  fi
+else
+  cd $PSS_ROOT/sys/libc/src/sysclass
+d171 3
+a173 1
+  make
+d191 6
+a196 7
+if [ "$CONFIG_PPC_GNU_LINUX" != "y" ]; then
+  if [ "`VarDosToUnix PSS_ROOT`/bsps/eureka/src/makefile" ]
+  then
+    echo Building BSP library for `VarDosToUnix PSS_ROOT`/bsps/eureka/src...
+  
+    cd "`VarDosToUnix PSS_ROOT`/bsps/eureka/src"
+    echo Current directory is `pwd`
+d198 2
+a199 8
+    echo Running `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+    `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+  fi
+else
+    echo Building BSP library for $PSS_ROOT/bsps/eureka/src...
+    cd $PSS_ROOT/bsps/eureka/src
+    echo Current directory is `pwd`
+    make
+d202 9
+a210 15
+if [ "$CONFIG_PPC_GNU_LINUX" != "y" ]; then
+  if [ "`VarDosToUnix PSS_ROOT`/bsps/eureka/src/devices/usb/makefile" ]
+  then
+    echo Building USB Stack library for `VarDosToUnix PSS_ROOT`/bsps/eureka/src/devices/usb...
+  
+    cd "`VarDosToUnix PSS_ROOT`/bsps/eureka/src/devices/usb"
+    echo Current directory is `pwd`
+  
+    echo Running `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u 
+    `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u 
+  fi
+else
+  echo Building USB Stack library for $PSS_ROOT/bsps/eureka/src/devices/usb...
+  cd $PSS_ROOT/bsps/eureka/src/devices/usb
+  make
+d213 6
+a218 7
+if [ "$CONFIG_PPC_GNU_LINUX" != "y" ]; then
+  for arg in `VarDosToUnix PSS_ROOT`/apps/vesta/stbdev/adecod/makefile
+  do
+    echo Building audio decoder library ...
+  
+    cd `dirname $arg`
+    echo Current directory is `pwd`
+d220 2
+a221 2
+    echo Running `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+    `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+d223 1
+a223 9
+  done
+else
+  for arg in $PSS_ROOT/apps/vesta/stbdev/adecod/makefile
+  do
+    echo Building audio decoder library ...
+    cd `dirname $arg`
+    make
+  done
+fi
+d225 3
+a227 4
+if [ "$CONFIG_PPC_GNU_LINUX" != "y" ]; then
+  for arg in `VarDosToUnix PSS_ROOT`/apps/vesta/stbdev/vdecod/makefile
+  do
+    echo Building video decoder library ...
+d229 2
+a230 2
+    cd `dirname $arg`
+    echo Current directory is `pwd`
+d232 2
+a233 2
+    echo Running `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+    `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+d235 1
+a235 9
+  done
+else
+  for arg in $PSS_ROOT/apps/vesta/stbdev/vdecod/makefile
+  do
+    echo Building video decoder library ...
+    cd `dirname $arg`
+    make
+  done
+fi
+d237 3
+a239 4
+if [ "$CONFIG_PPC_GNU_LINUX" != "y" ]; then
+  for arg in `VarDosToUnix PSS_ROOT`/apps/vesta/stbdev/xp/makefile
+  do
+    echo Building xp library ...
+d241 2
+a242 2
+    cd `dirname $arg`
+    echo Current directory is `pwd`
+d244 2
+a245 2
+    echo Running `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+    `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+d247 1
+a247 9
+  done
+else
+  for arg in $PSS_ROOT/apps/vesta/stbdev/xp/makefile
+  do
+    echo Building xp library ...
+    cd `dirname $arg`
+    make
+  done
+fi
+d249 3
+a251 4
+if [ "$CONFIG_PPC_GNU_LINUX" != "y" ]; then
+  for arg in `VarDosToUnix PSS_ROOT`/apps/vesta/demo/menus/makefile
+  do
+    echo Building menus library ...
+d253 2
+a254 2
+    cd `dirname $arg`
+    echo Current directory is `pwd`
+d256 2
+a257 2
+    echo Running `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+    `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+d259 1
+a259 9
+  done
+else
+  for arg in $PSS_ROOT/apps/vesta/demo/menus/makefile
+  do
+    echo Building menus library ...
+    cd `dirname $arg`
+    make
+  done
+fi
+d261 3
+a263 4
+if [ "$CONFIG_PPC_GNU_LINUX" != "y" ]; then
+  for arg in `VarDosToUnix PSS_ROOT`/apps/vesta/clibext/makefile
+  do
+    echo Building clibext library ...
+d265 2
+a266 2
+    cd `dirname $arg`
+    echo Current directory is `pwd`
+d268 2
+a269 2
+    echo Running `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+    `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+d271 1
+a271 9
+  done
+else
+  for arg in $PSS_ROOT/apps/vesta/clibext/makefile
+  do
+    echo Building clibext library ...
+    cd `dirname $arg`
+    make
+  done
+fi
+a272 4
+if [ "$CONFIG_PPC_GNU_LINUX" != "y" ]; then
+  for arg in `VarDosToUnix PSS_ROOT`/apps/vesta/stbdev/graphics/makefile
+  do
+    echo Building graphics library ...
+d274 3
+a276 2
+    cd `dirname $arg`
+    echo Current directory is `pwd`
+d278 2
+a279 2
+    echo Running `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+    `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+d281 2
+a282 9
+  done
+else
+  for arg in $PSS_ROOT/apps/vesta/stbdev/graphics/makefile
+  do
+    echo Building graphics library ...
+    cd `dirname $arg`
+    make
+  done
+fi
+d284 1
+a284 4
+if [ "$CONFIG_PPC_GNU_LINUX" != "y" ]; then
+  for arg in `VarDosToUnix PSS_ROOT`/apps/vesta/lllib/makefile
+  do
+    echo Building lllib library ...
+d286 3
+a288 2
+    cd `dirname $arg`
+    echo Current directory is `pwd`
+d290 2
+a291 2
+    echo Running `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+    `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+d293 2
+a294 9
+  done
+else
+  for arg in $PSS_ROOT/apps/vesta/lllib/makefile
+  do
+    echo Building lllib library ...
+    cd `dirname $arg`
+    make
+  done
+fi
+d296 1
+a296 4
+if [ "$CONFIG_PPC_GNU_LINUX" != "y" ]; then
+  for arg in `VarDosToUnix PSS_ROOT`/apps/vesta/stbdev/osd/makefile
+  do
+    echo Building osd library ...
+d298 3
+a300 2
+    cd `dirname $arg`
+    echo Current directory is `pwd`
+d302 2
+a303 2
+    echo Running `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+    `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+d305 2
+a306 9
+  done
+else
+  for arg in $PSS_ROOT/apps/vesta/stbdev/osd/makefile
+  do
+    echo Building osd library ...
+    cd `dirname $arg`
+    make
+  done
+fi
+d308 1
+a308 4
+if [ "$CONFIG_PPC_GNU_LINUX" != "y" ]; then
+  for arg in `VarDosToUnix PSS_ROOT`/apps/vesta/stbdev/rawir/makefile
+  do
+    echo Building rawir library ...
+d310 3
+a312 2
+    cd `dirname $arg`
+    echo Current directory is `pwd`
+d314 2
+a315 2
+    echo Running `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+    `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+d317 2
+a318 9
+  done
+else
+  for arg in $PSS_ROOT/apps/vesta/stbdev/rawir/makefile
+  do
+    echo Building rawir library ...
+    cd `dirname $arg`
+    make
+  done
+fi
+d320 1
+a320 4
+if [ "$CONFIG_PPC_GNU_LINUX" != "y" ]; then
+  for arg in `VarDosToUnix PSS_ROOT`/apps/vesta/stbdev/serialcp/makefile
+  do
+    echo Building serialcp library ...
+d322 3
+a324 2
+    cd `dirname $arg`
+    echo Current directory is `pwd`
+d326 2
+a327 2
+    echo Running `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+    `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+d329 2
+a330 9
+  done
+else
+  for arg in $PSS_ROOT/apps/vesta/stbdev/serialcp/makefile
+  do
+    echo Building serialcp library ...
+    cd `dirname $arg`
+    make
+  done
+fi
+d332 1
+d334 3
+a336 4
+if [ "$CONFIG_PPC_GNU_LINUX" != "y" ]; then
+  for arg in `VarDosToUnix PSS_ROOT`/apps/vesta/stbdev/opticdvr/makefile
+  do
+    echo Building optic library ...
+d338 2
+a339 2
+    cd `dirname $arg`
+    echo Current directory is `pwd`
+d341 2
+a342 2
+    echo Running `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+    `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+d344 1
+a344 9
+  done
+else
+  for arg in $PSS_ROOT/apps/vesta/stbdev/opticdvr/makefile
+  do
+    echo Building optic library ...
+    cd `dirname $arg`
+    make
+  done
+fi
+d347 3
+a349 4
+if [ "$CONFIG_PPC_GNU_LINUX" != "y" ]; then
+  for arg in `VarDosToUnix PSS_ROOT`/apps/vesta/MIDWARE/openTV/xp/makefile
+  do
+    echo Building opentv library ...
+d351 2
+a352 2
+    cd `dirname $arg`
+    echo Current directory is `pwd`
+d354 2
+a355 2
+    echo Running `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+    `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+d357 1
+a357 9
+  done
+else
+  for arg in $PSS_ROOT/apps/vesta/MIDWARE/openTV/xp/makefile
+  do
+    echo Building opentv library ...
+    cd `dirname $arg`
+    make
+  done
+fi
+a360 3
+# Revision 1.13  2000/12/05 22:00:56  jkaisner
+# add USB stack to app
+#
+@
+
+
+1.12
+log
+@Merge has been completed from the DAR_1-0 Branch back to the trunk.
+There is one syntax error in the GUI code which appears to be easy to solve.
+I have resolved to commit this anyway so that others may fix this up
+first thing in the morning.  -Will
+@
+text
+@d4 1
+a4 1
+# $Id: buildpss.ksh,v 1.11 2000/11/10 14:19:26 stenpas Exp $
+d202 11
+d361 6
+@
+
+
+1.11
+log
+@Added 24/0 MB support
+@
+text
+@d4 1
+a4 1
+# $Id: buildpss.ksh,v 1.10 2000/10/30 21:53:16 gvt Exp $
+d350 6
+@
+
+
+1.10
+log
+@Removed erroneous redundant build of eureka bsp
+  -GVT, 10/30/2000
+@
+text
+@d4 1
+a4 1
+# $Id: buildpss.ksh,v 1.9 2000/10/20 02:37:43 wrk Exp $
+d106 1
+a106 1
+	echo "   MEMSIZE = 0|1  -- > 0 = 16M, 1 = 32M "
+d114 1
+a114 1
+echo  "   Memory size is $MEMSIZE where 0 = 16M, 1 = 32M"
+d202 146
+d350 4
+@
+
+
+1.10.2.1
+log
+@24MB/0 memory support added.
+@
+text
+@d4 1
+a4 1
+# $Id: buildpss.ksh,v 1.10 2000/10/30 21:53:16 gvt Exp $
+d106 1
+a106 1
+	echo "   MEMSIZE = MEM_SIZE_24and0"
+d114 1
+a114 1
+echo  "   Memory size is $MEMSIZE"
+a201 146
+for arg in `VarDosToUnix PSS_ROOT`/apps/vesta/stbdev/adecod/makefile
+do
+  echo Building audio decoder library ...
+
+  cd `dirname $arg`
+  echo Current directory is `pwd`
+
+  echo Running `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+  `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+
+done
+
+for arg in `VarDosToUnix PSS_ROOT`/apps/vesta/stbdev/vdecod/makefile
+do
+  echo Building video decoder library ...
+
+  cd `dirname $arg`
+  echo Current directory is `pwd`
+
+  echo Running `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+  `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+
+done
+
+for arg in `VarDosToUnix PSS_ROOT`/apps/vesta/stbdev/xp/makefile
+do
+  echo Building xp library ...
+
+  cd `dirname $arg`
+  echo Current directory is `pwd`
+
+  echo Running `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+  `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+
+done
+
+for arg in `VarDosToUnix PSS_ROOT`/apps/vesta/demo/menus/makefile
+do
+  echo Building menus library ...
+
+  cd `dirname $arg`
+  echo Current directory is `pwd`
+
+  echo Running `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+  `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+
+done
+
+for arg in `VarDosToUnix PSS_ROOT`/apps/vesta/clibext/makefile
+do
+  echo Building clibext library ...
+
+  cd `dirname $arg`
+  echo Current directory is `pwd`
+
+  echo Running `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+  `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+
+done
+
+
+for arg in `VarDosToUnix PSS_ROOT`/apps/vesta/stbdev/graphics/makefile
+do
+  echo Building graphics library ...
+
+  cd `dirname $arg`
+  echo Current directory is `pwd`
+
+  echo Running `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+  `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+
+done
+
+for arg in `VarDosToUnix PSS_ROOT`/apps/vesta/lllib/makefile
+do
+  echo Building lllib library ...
+
+  cd `dirname $arg`
+  echo Current directory is `pwd`
+
+  echo Running `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+  `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+
+done
+
+for arg in `VarDosToUnix PSS_ROOT`/apps/vesta/stbdev/osd/makefile
+do
+  echo Building osd library ...
+
+  cd `dirname $arg`
+  echo Current directory is `pwd`
+
+  echo Running `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+  `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+
+done
+
+for arg in `VarDosToUnix PSS_ROOT`/apps/vesta/stbdev/rawir/makefile
+do
+  echo Building rawir library ...
+
+  cd `dirname $arg`
+  echo Current directory is `pwd`
+
+  echo Running `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+  `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+
+done
+
+for arg in `VarDosToUnix PSS_ROOT`/apps/vesta/stbdev/serialcp/makefile
+do
+  echo Building serialcp library ...
+
+  cd `dirname $arg`
+  echo Current directory is `pwd`
+
+  echo Running `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+  `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+
+done
+
+for arg in `VarDosToUnix PSS_ROOT`/apps/vesta/stbdev/opticdvr/makefile
+do
+  echo Building optic library ...
+
+  cd `dirname $arg`
+  echo Current directory is `pwd`
+
+  echo Running `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+  `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+
+done
+
+
+for arg in `VarDosToUnix PSS_ROOT`/apps/vesta/MIDWARE/openTV/xp/makefile
+do
+  echo Building opentv library ...
+
+  cd `dirname $arg`
+  echo Current directory is `pwd`
+
+  echo Running `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+  `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+
+done
+
+a203 4
+# Revision 1.10  2000/10/30 21:53:16  gvt
+# Removed erroneous redundant build of eureka bsp
+#   -GVT, 10/30/2000
+#
+@
+
+
+1.9
+log
+@Module Loader changes. Include changes to the make config target
+to control conditional compile of the module loader and module
+candidate subsystems.  Also, include changes to allow MP3_Player to
+be compiled as a Module -- MP3_Player.app. Also, includes
+changes to the 32Meg/16Meg development flags to allow both
+source and pssppc trees to see the board.h head through the
+same MEM_SIZE define and ties together the config option for
+building for a 32M developer board.  No change yet for building
+with alternate ram.dld for RTC. (FYI)
+Also, added properties for starting up subsystems .. can
+set stack size and priority via property.  -Will
+@
+text
+@d4 1
+a4 1
+# $Id: buildpss.ksh,v 1.8 2000/10/16 20:15:46 stenpas Exp $
+d177 3
+a190 11
+if [ "`VarDosToUnix PSS_ROOT`/bsps/devices/src/makefile" ]
+then
+  echo Building BSP library for `VarDosToUnix PSS_ROOT`/bsps/devices/src...
+
+  cd "`VarDosToUnix PSS_ROOT`/bsps/eureka/src"
+  echo Current directory is `pwd`
+
+  echo Running `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+  `VarDosToUnix PSS_ROOT`/bin/win32/psosmake -u
+fi
+
+d204 13
+@
+
+
+1.8
+log
+@Added 32MB build option
+@
+text
+@d4 1
+a4 1
+# $Id: buildpss.ksh,v 1.7 2000/09/22 17:55:49 gvt Exp $
+d84 1
+a84 1
+	echo "Usage: buildpss TYPE MACADDR"
+d86 1
+d88 1
+d98 19
+d118 1
+a118 1
+if test "$2" = ""
+d126 1
+a126 1
+		echo "Usage: buildpss TYPE [MACADDR]"
+d128 1
+d141 1
+a141 1
+	MAC_ADDRESS=$2
+a146 9
+if test "$3" = ""
+then
+	MEMSIZE="CONFIG_DEV_16M"
+else
+	MEMSIZE=$2
+fi
+echo "======================================================================="
+echo " Memory size is $MEMSIZE"
+echo "======================================================================="
+d212 3
+@
+
+
+1.7
+log
+@Added support for Dar rev C BSP (defined as DAR_C).
+GVT - 09/22/2000
+@
+text
+@d4 1
+a4 1
+# $Id: buildpss.ksh,v 1.6 2000/08/30 16:30:33 wrk Exp $
+d76 3
+d99 1
+a99 1
+	if test "$MY_TARGET_MAC_ADDRESS" = ""
+d125 11
+d199 4
+@
+
+
+1.6
+log
+@THe rest of the files for supporting the new build process -Will
+@
+text
+@d4 1
+a4 1
+# $Id$
+d82 2
+a83 1
+	echo "   TYPE = DAR|ACT,  MACADDR = AA:BB:CC:DD:EE:FF  (a locally unique HW addr)."
+d103 2
+a104 1
+		echo "   TYPE = DAR|ACT,  MACADDR = AA:BB:CC:DD:EE:FF  (a locally unique HW addr)."
+d184 4
+a187 1
+# $Log$
+@
+
+
+1.5
+log
+@Removed defaulting to ACT.
+@
+text
+@d4 2
+d34 2
+d37 1
+d71 49
+d147 13
+a159 5
+#--------------------------------------------------------------------------
+# Build all available BSPs
+#--------------------------------------------------------------------------
+export SYSNAME
+if test "$1" = ""
+d161 7
+a167 5
+	echo ================================================================
+	echo    ERROR: No board type specified on command line.
+	echo ================================================================
+else
+	SYSNAME=$1
+a168 3
+echo ================================================================
+echo    Building BSP for "$SYSNAME" board
+echo ================================================================
+d170 3
+a172 3
+for arg in `VarDosToUnix PSS_ROOT`/bsps/*/src/makefile
+do
+  echo Building BSP library for `dirname $arg`...
+d174 1
+a174 1
+  cd `dirname $arg`
+d179 5
+a183 1
+done
+@
+
+
+1.4
+log
+@Added code to check for a missing
+command line argument in the buildpss.ksh
+and buildbsp.ksh scripts, and use the
+default value "ACT" if none is
+provided before exporting SYSNAME.
+    -GVT
+@
+text
+@d100 1
+a100 1
+	echo    WARNING: No board type specified on command line, using "ACT"
+a101 1
+	SYSNAME="ACT"
+@
+
+
+1.3
+log
+@Added support to allow user to define which BSP to build from the command line.
+@
+text
+@a95 1
+setenv SYSNAME
+d97 12
+a108 1
+SYSNAME=$1
+@
+
+
+1.2
+log
+@Added code to pull in Prism+ environment variables at the top.
+@
+text
+@d96 4
+@
+
+
+1.1
+log
+@
+---------------------------------------------------------
+* pSOSystem build tree status update - 04/25/2000 - gvt *
+---------------------------------------------------------
+
+This started with my attempt to add the IDE HD driver support
+into the Eureka BSP and turned into a long build tree detective
+work ...
+
+I still have not added the IDE HD driver into the Eureka
+BSP, but ...
+
+I finally got the CVS checked in pssppc tree to work again.
+Looks like the pssppc tree was broken two revs back on last
+Friday - suspect currently on the run :-)
+
+pSOSystem/BSP build process:
+---------------------------
+
+It took a while, but I think it was worth it since it
+brought up some issues with the current build process.
+This is something we still need to work on...
+
+In the interim, I created a build script so that the pssppc
+tree can be easily rebuilt by following these steps:
+
+1 - Make sure you have the prism ppc SP1 & SP2 patches applied.
+2 - Make sure you have upgraded to version 4.3f of the Diab
+    tools (dcc and dld)
+3 - Check out the pssppc tree from the CVS repository to your
+    favorite location on your system (does not need to be under
+    the prism installation directory anymore).
+4- Start the pSOS DOS shell (the build script currently fails to
+    build BSP libraries under pssppc\bsps when run under the Korn
+    shell).
+5- Cd to the pssppc checked out root directory.
+6- Run "buildpss.ksh"
+7- Done (assuming no build errors)
+
+I compiled a simple Hello world test app using
+the built libraries and verified that the resulting code
+is functional on the current Eureka dev board.
+
+
+Summary of the changes I made:
+-----------------------------
+
+Added shell script buildpss.ksh in pssppc\.
+  This can be run from the pSOS DOS prompt (see buildpss.ksh)
+  and will all the following required pSOSystem and pSOS BSP
+  libraries:
+    The pSOSystem C system library: pssppc\sys\os\libsys.a
+    The pSOSystem C++ library:      pssppc\sys\libc\libcxxsp.a
+    BSP library file for each BSP directory under pssppc\bsps
+    (currently  devices, eureka, and redwood3).
+
+Removed following files:
+  *.bak
+  all vssver.scc
+  *.o
+  *.opt
+  make.log
+  all taz.log
+  all tazkey.log
+
+Removed pssppc apps directory:
+  ssppc\apps - this does not belong here really and is not needed
+               build the system and BSP libraries.
+
+Removed directories:
+  pssppc\umenuprefs
+  pssppc\workingenvs
+
+Removed following BSP directories:
+  pssppc\bsps\e403 - (no longer required)
+  pssppc\bsps\fads8xx
+  pssppc\bsps\mbx8xx
+  pssppc\bsps\simppc
+  pssppc\bsps\template
+  pssppc\bsps\ylwknife
+
+Verified that the pSOSystem libraries in pssppc\sys\libc (other
+than libsys.a which is rebuild dynamically) are at SP2 patch
+level:
+  libdrv.a
+  libiosH.a
+  libiosS.a
+  libloadr.a
+  libnetu.a
+  libpnet.a
+  libposix.a
+  libprepcH.a
+  libprepcS.a
+  libquery.a
+
+Updated following driver source to SP2 patch level:
+  pssppc\drivers\diti.c
+  pssppc\drivers\scsi.c
+  pssppc\drivers\scsimplx.c
+  pssppc\drivers\parallel.c
+
+Changed pssppc/bsps/eureka/makefile dependence on PSS_ROOT
+an PSS_PPC as follows:
+  # PSS_ROOT needs to be set before this makefile is executed
+  # (This is set in buildpss.ksh in the psspc root directory)
+  # GVT - 04/25/2000
+  #PSS_ROOT= /ISIPPC/pssppc.222
+
+  # PSS_BSP is relative to PSS_ROOT
+  # GVT - 04/25/2000
+  PSS_BSP= $(PSS_ROOT)/bsps/eureka
+
+Changed pssppc/bsps/redwood3/makefile dependence on lan devices as
+follows (following same modifications made by STENPAS to the eureka
+BSP last Friday):
+  # Changed lan_mib.h file to reside in .\devices\lan directory
+  # GVT - 04/25/2000
+  DEV_DIR = devices
+
+Changed pssppc/bsps/eureka/makefile dependence on PSS_ROOT
+an PSS_PPC as follows:
+  # PSS_ROOT needs to be set before this makefile is executed
+  # (This is set in buildpss.ksh in the psspc root directory)
+  # GVT - 04/25/2000
+  #PSS_ROOT= /ISIPPC/pssppc.222
+
+  # PSS_BSP is relative to PSS_ROOT
+  # GVT - 04/25/2000
+  PSS_BSP= $(PSS_ROOT)/bsps/redwood3
+
+
+Updated following pSOSystem include files to SP2 patch level:
+  pssppc\include\iostream.h  - (different in white spaces only)
+
+Updated the following driver makefile to SP2 patch level:
+  pssppc\drivers\rules.mk
+
+Kept the pssppc\drivers\ppp directory intact (as checked in by
+Bob on last Friday).
+
+Changes to CVS repository:
+-------------------------
+
+Under Eureka or Eureka-PsosPPC CVS modules there will be a new pssppc
+subdir with all the new . This is the tree everyone will be using.
+@
+text
+@d21 1
+d23 18
+@
+
