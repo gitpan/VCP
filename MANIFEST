@@ -1,5 +1,6 @@
 CHANGES
 INSTALL
+LICENSE
 MANIFEST
 MANIFEST.SKIP
 README
@@ -27,6 +28,7 @@ lib/VCP/Source/p4.pm
 lib/VCP/Source/revml.pm
 lib/VCP/TestUtils.pm
 revml.dtd
+t/00destp4.t
 t/00plugin.t
 t/00rev.t
 t/10vcp.t

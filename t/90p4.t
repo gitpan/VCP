@@ -86,21 +86,24 @@ sub {
    ## These depend on the "test-foo-in-0.revml" files built in the makefile.
    ## See MakeMaker.PL for how those are generated.
    ##
+   ## We are also testing to see if we can re-root the files under foo/...
+   ##
    my $diff = '' ;
    eval {
       my $out ;
       ## $in and $out allow us to avoide execing diff most of the time.
-      run [ @vcp, "revml:$infile", $p4spec, '-w', $p4_options->{work} ], \undef
-	 or die "`$vcp revml:$infile $p4spec` returned $?" ;
+      run [ @vcp, "revml:$infile", "$p4spec$p4_options->{work}/foo" ], \undef
+	 or die "`$vcp revml:$infile $p4spec$p4_options->{work}/foo` returned $?" ;
 
       ok( 1 ) ;
 
-      run [ @vcp, "$p4spec..." ], \undef, \$out 
-	 or die "`$vcp $p4spec...` returned $?" ;
+      run [ @vcp, "${p4spec}foo/..." ], \undef, \$out 
+	 or die "`$vcp ${p4spec}foo/...` returned $?" ;
 
       my $in = slurp $infile ;
 
 #$out =~ s{<name>depot/}{<name>}g ;
+$in =~ s{</rev_root>}{/foo</rev_root>} ;
 $in =~ s{^\s*<p4_info>.*?</p4_info>\n}{}smg ;
 $in =~ s{<rep_desc>.*?</rep_desc>}{<rep_desc><!--deleted by p4.t--></rep_desc>}s ;
 $out =~ s{<rep_desc>.*?</rep_desc>}{<rep_desc><!--deleted by p4.t--></rep_desc>}s ;
@@ -137,10 +140,10 @@ sub {
    ## Test a single file extraction from a p4 repo.  This file exists in
    ## change 1.
    my $out ;
-   run( [@vcp, "$p4spec//depot/add/f1"], \undef, \$out ) ;
+   run( [@vcp, "$p4spec//depot/foo/add/f1"], \undef, \$out ) ;
    ok(
       $out,
-      qr{<rev_root>depot/add</.+<name>f1<.+<rev_id>1<.+<rev_id>2<.+</revml>}s
+      qr{<rev_root>depot/foo/add</.+<name>f1<.+<rev_id>1<.+<rev_id>2<.+</revml>}s
    ) ;
 },
 
@@ -148,10 +151,10 @@ sub {
    ## Test a single file extraction from a p4 repo.  This file does not exist
    ## in change 1.
    my $out ;
-   run( [@vcp, "$p4spec//depot/add/f2"], \undef, \$out ) ;
+   run( [@vcp, "$p4spec//depot/foo/add/f2"], \undef, \$out ) ;
    ok(
       $out,
-      qr{<rev_root>depot/add</.+<name>f2<.+<change_id>2<.+<change_id>3<.+</revml>}s
+      qr{<rev_root>depot/foo/add</.+<name>f2<.+<change_id>2<.+<change_id>3<.+</revml>}s
    ) ;
 
 },
@@ -165,17 +168,12 @@ sub {
    my $outfile  = $t . "test-$type-out-0-cvs.revml" ;
    my $infile_t = "test-$type-in-0-cvs-tweaked.revml" ;
    my $outfile_t = "test-$type-out-0-cvs-tweaked.revml" ;
-   ##
-   ## Idempotency test
-   ##
-   ## These depend on the "test-foo-in.revml" files built in the makefile.
-   ## See MakeMaker.PL for how those are generated.
-   ##
+
    my $diff = '' ;
    eval {
       my $out ;
-      run( [ @vcp, "$p4spec//depot/...", "cvs" ], \undef )
-	 or die "`$vcp $p4spec//depot/... cvs` returned $?" ;
+      run( [ @vcp, "$p4spec//depot/foo/...", "cvs:/depot" ], \undef )
+	 or die "`$vcp $p4spec//depot/foo/... cvs:/depot` returned $?" ;
 
       ok( 1 ) ;
 
@@ -244,7 +242,7 @@ sub {
    ##
    ## Idempotency test
    ##
-   ## These depend on the "test-foo-in-0.revml" files built in the makefile.
+   ## These depend on the "test-foo-in-1.revml" files built in the makefile.
    ## See MakeMaker.PL for how those are generated.
    ##
    my $diff = '' ;
@@ -261,16 +259,17 @@ sub {
       my $out ;
 
       ## $in and $out allow us to avoide execing diff most of the time.
-      run [ @vcp, "revml:$infile", "$p4spec", '-w', $p4_options->{work} ], \undef
-	 or die "`$vcp revml:$infile $p4spec` returned $?" ;
+      run [ @vcp, "revml:$infile", "$p4spec$p4_options->{work}/foo" ], \undef
+	 or die "`$vcp revml:$infile $p4spec$p4_options->{work}/foo` returned $?" ;
 
       ok( 1 ) ;
 
-      run [ @vcp, "$p4spec...\@$incr_change,#head" ], \undef, \$out
-	 or die "`$vcp $p4spec...\@$incr_change,#head` returned $?" ;
+      run [ @vcp, "${p4spec}foo/...\@$incr_change,#head" ], \undef, \$out
+	 or die "`$vcp ${p4spec}foo/...\@$incr_change,#head` returned $?" ;
 
       my $in = slurp $infile ;
 
+$in =~ s{</rev_root>}{/foo</rev_root>} ;
 $out =~ s{<name>depot/}{<name>}g ;
 $in =~ s{^\s*<p4_info>.*?</p4_info>\n}{}smg ;
 $in =~ s{<rep_desc>.*?</rep_desc>}{<rep_desc><!--deleted by p4.t--></rep_desc>}s ;
@@ -321,15 +320,16 @@ sub {
    eval {
       my $out ;
 
-      run( [ @vcp, "$p4spec...\@$incr_change,#head", "--bootstrap=**" ],
+      run( [ @vcp, "${p4spec}foo/...\@$incr_change,#head", "--bootstrap=**" ],
          \undef, \$out
       ) or die(
-	 "`$vcp $p4spec...\@$incr_change,#head --bootstrap=**` returned $?"
+	 "`$vcp ${p4spec}foo/...\@$incr_change,#head --bootstrap=**` returned $?"
       ) ;
 
       my $in = slurp $infile ;
 
 $out =~ s{<name>depot/}{<name>}g ;
+$in =~ s{</rev_root>}{/foo</rev_root>} ;
 $in =~ s{^\s*<p4_info>.*?</p4_info>\n}{}smg ;
 $in =~ s{<rep_desc>.*?</rep_desc>}{<rep_desc><!--deleted by p4.t--></rep_desc>}s ;
 $out =~ s{<rep_desc>.*?</rep_desc>}{<rep_desc><!--deleted by p4.t--></rep_desc>}s ;

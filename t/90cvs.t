@@ -175,7 +175,7 @@ sub {
 
       run(
          [ @vcp, "cvs:$cvsroot:$module", qw( -r 1.1: ),
-	    $p4spec, "-w", $p4_options->{work}
+	    "$p4spec$p4_options->{work}"
 	 ], \undef
       ) or die "`$vcp cvs:$cvsroot:$module -r 1.1:` returned $?" ;
 

@@ -1,5 +1,10 @@
 CHANGES for vcp - Version CoPy
 
+0.1 Wed Jul  4 00:27:35 EDT 2001
+   - Fix VCP::Dest::p4 to take the filespec from the p4:<dest> spec and
+     use it as the rev_root.  No --rev-root option at this time, not sure
+     if it's needed.  Reported by david d zuhn <zoo@bravara.com>.
+
 0.091 Thu Jun  7 08:32:15 EDT 2001
    - Fix bug in CVS log file parsing that was causing it to think it was seeing
      all revisions as revisions of the first file it saw ("====... lines were

@@ -8,16 +8,50 @@ VCP::Dest::p4 - p4 destination driver
 
    vcp <source> p4[:<dest>]
 
-where <dest> is an already created directory in the p4 repository.
+where <dest> is a filespec to a directory in the perforce repository or on the
+local client of the directory tree to use when importing files (this is known
+as the "rev root", for lack of a better term).
 
-This destination driver will check out the indicated destination in
-a temporary directory and use it to add, edit, and delete files.
+The <dest> spec is run through the `p4 where` command to get an absolute path
+on the local filesystem.  `p4 where` must generate exactly one line of output,
+and the line is parsed to strip off the depot and client filespecs, including
+file and directory names containing spaces (directory names containing trailing
+spaces are not handled correctly!).
 
-At this time, each file being changed is submitted and gets it's own
-change number unless change numbers are assigned by the source.
+See `p4 help where` and the Perforce User's Guide for details on how to specify
+the <dest>, but here's an overview (do check the Perforce User's Guide to see
+if your version of `p4 where` behaves differently):
 
-Also for now, you must take care to cd to the working directory
-that the current client's view point to.
+=over
+
+=item *
+
+any //depot/, //client/, or absolute or relative local filesystem spec can be
+supplied for <dest> (local specs should not begin with "//" even if the local
+OS would be Ok with it).
+
+=item *
+
+No need to type "/..." at the end of <dest>, VCP::Dest::p4
+adds it if it's missing.
+
+=item *
+
+Relative specs (or a missing <dest>) are taken (by p4 where) to be relative to
+the current working directory.
+
+=item *
+
+You cannot put directory names like "./" or "../" in the middle of any spec,
+only at the beginning of a relative local filesystem spec.
+
+=back
+
+VCP::Dest::p4 does change number aggregation, see L<VCP::Dest/rev_cmp_sub>
+for the order in which revisions are sorted. Once sorted, a change is submitted
+whenever the change number (if present) changes, the comment (if present)
+changes, or a new rev of a file with the same name as a revision that's
+pending. THIS IS EXPERIMENTAL, PLEASE DOUBLE CHECK EVERYTHING!
 
 =head1 DESCRIPTION
 
@@ -35,7 +69,6 @@ use vars qw( $debug ) ;
 $debug = 0 ;
 
 use Carp ;
-use Cwd ;
 use File::Basename ;
 use File::Path ;
 use Getopt::Long ;
@@ -45,7 +78,7 @@ use VCP::Rev ;
 
 use base 'VCP::Dest' ;
 use fields (
-   'P4_SPEC',       ## The root of the tree to update
+#   'P4_SPEC',       ## The root of the tree to update
    'P4_PENDING',    ## Revs pending the next submit
    'P4_DELETES_PENDING',    ## At least one 'delete' needs to be submitted.
    'P4_WORK_DIR',   ## Where to do the work.
@@ -75,21 +108,37 @@ sub new {
 
    my $files = $parsed_spec->{FILES} ;
 
-   $self->{P4_SPEC} = $files ;
    $self->{P4_PENDING} = [] ;
 
-   die "No spec '$files' allowed for destination class p4:"
-      if defined $files && length $files ;
+   GetOptions( "ArGhOpTioN" => \"" ) or $self->usage_and_exit ; # No options!
 
-   my $work_root ;
-   local *ARGV = \@$options ;
-   GetOptions(
-      'w=s' => \$work_root
-   ) or $self->usage_and_exit ;
-   $work_root = cwd unless defined $work_root && length $work_root ;
-
-   ## Make sure the p4 command is available
    $self->command( 'p4' ) ;
+
+   my @where_spec ;
+   if ( defined $files && length $files ) {
+      @where_spec = ( $files ) ;
+      $where_spec[0] =~ s{(/(\.\.\.)?)?$}{/...} ;
+   }
+
+   my $where_map ;
+   $self->p4( [ where => @where_spec ], ">", \$where_map ) ;
+
+   {
+      my @where_map = split /\n/g, $where_map ;
+      die "vcp: `p4 where` did not return a mapping for '$files'\n"
+	 unless @where_map ;
+      die(
+          "vcp: `p4 where",
+          map( " '$_'", @where_spec ),
+          "` returned more than one line:\n$where_map"
+      ) unless @where_map == 1 ;
+   }
+
+   my $work_root = $self->strip_p4_where( $where_map ) ;
+
+   die "Couldn't parse `p4 where` output\np4 where: $where_map"
+       unless defined $work_root and length $work_root ;
+
    $self->work_root( $work_root ) ;
    $self->command_chdir( $self->work_root ) ;
 #   $self->mkdir( $self->work_path ) ;
@@ -119,6 +168,36 @@ sub p4 {
 
    $self->SUPER::p4( @_ ) ;
    $ENV{PWD} = $tmp if defined $tmp ;
+}
+
+
+=item strip_p4_where
+
+Takes a line of output from a `p4 where` command and strips off all but the
+last filespec. This is a bit tricky in the face of directory names with spaces
+and is very hard or impossible if a directory name ends in a space.
+
+It's a separate function so the test suite can have at it.
+
+=cut
+
+sub strip_p4_where {
+   shift ;
+   my ( $where_stdout ) = @_ ;
+
+   1 while chomp $where_stdout ;
+   # Trim off up to the last "//" and all non-space chars after it.
+   # Also keep trimming until the first " /" to try to work around
+   # spaces in file names.
+   my $path_start_re = $^O =~ /Win|DOS/i
+       ? "(?:[A-Za-z]:)?[\\\\/]"
+       : "/(?!/)" ;
+
+   $where_stdout =~ s{^.* (?=$path_start_re)}{}
+       or return undef ;
+
+   $where_stdout =~ s{[\\/]\.\.\.$}{} ;
+   return $where_stdout ;
 }
 
 
