@@ -1,0 +1,330 @@
+#!/usr/local/bin/perl -w
+
+=head2 NAME
+
+gentrevml - Generate a .revml file used by the t/ scripts
+
+=head2 SYNOPSIS
+
+   perl bin/gentrevml --(revml|p4|cvs) [--bootstrap] [--batch=1]
+
+=head2 DESCRIPTION
+
+The test suite uses a bas RevML file to check to see vcp it can copy in to
+and out of a repository correctly.  This is done for each repository class.
+
+Note that going through a repository may lose some information, so the
+test suite can't always compare the input RevML to the output RevML.
+
+Only the revml->revml case is known to be idempotent.
+
+I chose to do this over using some base repository because not every user
+is going to happen to have that repository, and (2) not every repository
+will pass through all information correctly.
+
+=head2 COPYRIGHT
+
+Copyright 2000, Perforce Software, Inc.  All Rights Reserved.
+
+This will be licensed under a suitable license at a future date.  Until
+then, you may only use this for evaluation purposes.  Besides which, it's
+in an early alpha state, so you shouldn't depend on it anyway.
+
+=head2 AUTHOR
+
+Barrie Slaymaker <barries@slaysys.com>
+
+=cut
+
+use Getopt::Long ;
+
+use strict ;
+
+my $which ;
+my $debug ;
+
+sub which {
+   die "Only one mode allowed\n" if $which ;
+   $which = shift ;
+}
+
+my $batch ;
+my $bootstrap ;
+
+BEGIN {
+   ## Need to know how to name the output file before we can
+   ## "use RevML::Writer".
+   $batch = 0 ;
+   Getopt::Long::Configure( qw( no_auto_abbrev no_getopt_compat ) ) ;
+   unless (
+      GetOptions(
+	 'p4'           => \&which,
+	 'cvs'          => \&which,
+	 'revml'        => \&which,
+	 'b|bootstrap'  => \$bootstrap,
+	 'batch=i'      => \$batch,
+	 'd|debug'      => \$debug,
+      )
+      && $which
+   ) {
+      require Pod::Usage ;
+      Pod::Usage::pod2usage( exitval => 2, verbose => 3 ) ;
+   }
+}
+
+if ( $debug ) {
+   print STDERR "for $which\n" ;
+   print STDERR "bootstrap mode ", $bootstrap ? "on" : "off", "\n" ;
+   print STDERR "batch $batch\n" ;
+   print STDERR "\n" ;
+}
+
+## Set up all revs in memory
+my @files ;
+## Put @files in alpha order.  p4 likes to output in alpha order, and this
+## makes comparing p4->revml output to revml->p4 input easier.
+for    my $dir     ( 'add', 'del' ) {
+   for my $file    ( 'f1'..'f4' ) {
+      my $fn = "$dir/$file" ;
+      next if $fn eq "del/f1" ; # Can't delete in change 1
+      push @files, $fn ;
+   }
+}
+
+my @changes ;
+
+{
+   my $user_id = "${which}_t_user" ;
+   $user_id .= '@p4_t_client' if $which eq 'p4' ;
+
+   my %rev_num ;
+
+   my %deleted_change_num = (
+      ## Delete the 'd1/f<x>' in change <x>
+      ## except you can't delete anything in change 1, eh?
+      map( ( "del/f$_" => $_ ), (2..9) ),
+   ) ;
+
+   my %created_change_num = (
+      ## Add the 'd2/f<x>' in change <x>
+      map( ( "add/f$_" => $_ ), (1..9) ),
+   ) ;
+   my $counter = "00" ;
+
+   for my $change_num ( 1..6 ) {
+      print STDERR "concocting \@$change_num:\n" if $debug ;
+      for my $name ( @files ) {
+	 next
+	    if (
+	       defined $created_change_num{$name}
+	       && $change_num < $created_change_num{$name} 
+	    )
+	    || (
+	       defined $deleted_change_num{$name}
+	    && $change_num > $deleted_change_num{$name}
+	    ) ;
+
+	 ++$rev_num{$name} ;
+
+	 print STDERR "   $name#$rev_num{$name}:" if $debug ;
+
+	 my $content = "$name, revision $rev_num{$name}\n" ;
+
+	 my $r = {
+	    name    => $name,
+	    type    => 'text',
+	    user_id => $user_id,
+	    content => $content,
+	    time    => "2000-01-01 12:00:${counter}Z",
+	    ## In p4, all files in a change number have an identical comment.
+	    comment => "foo" . ( $which eq 'p4' ? $change_num : $counter ) . "\n",
+	 } ;
+
+	 ## p4 doesn't handle modtime until very recently, and then it
+	 ## doesn't expose it easily.
+	 $r->{mod_time} = "2000-01-01 12:01:${counter}Z" unless $which eq 'p4' ;
+
+	 if ( $which eq 'p4' ) {
+	    $r->{p4_info}   = "Some info $which might emit about this file" ;
+	    $r->{rev_id}    = $rev_num{$name} ;
+	    ## In p4, you may have skipped some change numbers
+	    $r->{change_id} = ( $r->{rev_id} - 1 ) * 2 + 1 ;
+	    ## TODO: Delete this next line when we get VCP::Dest::p4 to sync
+	    ## change numbers
+	    $r->{change_id} = $change_num ;
+	 }
+	 elsif ( $which eq 'cvs' ) {
+	    $r->{cvs_info}  = "Some info $which might emit about this file" ;
+	    $r->{rev_id} = "1.$rev_num{$name}" ;
+	    # We provide a change ID to see if the label makes it in and
+	    # so that the label can be used to test incremental exports from
+	    # cvs.
+	    $r->{change_id} = $change_num ;
+	 }
+	 elsif ( $which eq 'revml' ) {
+	    $r->{cvs_info}  ="Some info about this file" ;
+	    $r->{rev_id}    = $rev_num{$name} ;
+	    $r->{change_id} = $change_num ;
+	 }
+	 else {
+	    die "$which unhandled" ;
+	 }
+
+	 if ( defined $deleted_change_num{$name} 
+	    && $change_num == $deleted_change_num{$name}
+	 ) {
+	    $r->{action} = 'delete' ;
+	 }
+	 elsif ( $rev_num{$name} eq 1 ) {
+	    $r->{action} = 'add' ;
+	 }
+	 else {
+	    $r->{action} = 'edit' ;
+	 }
+
+	 unless ( $r->{action} eq 'delete' || $counter % 2 ) {
+	    $r->{labels} = [
+		"achoo$counter",
+		"blessyou$counter",
+	    ] ;
+	 }
+
+	 $counter = sprintf "%02d", $counter + 1 ;
+
+	 push @{$changes[$change_num]}, $r ;
+	 if ( $debug ) {
+	    print STDERR " #$r->{rev_id}" ;
+	    print STDERR " \@$r->{change_id})" if defined $r->{change_id} ;
+	    print STDERR " ($r->{action})\n" ;
+	 }
+      }
+      print STDERR "\n" if $debug ;
+   }
+}
+
+## Emit the document
+
+use Digest::MD5 qw( md5_base64 ) ;
+use File::Basename ;
+use RevML::Doctype 'DEFAULT' ;
+use RevML::Writer qw( :all :dtd_tags ) ;
+
+my $prog = basename $0 ;
+my $f0 = "$prog.0" ;
+my $f1 = "$prog.1" ;
+
+setDataMode 1 ;
+
+xmlDecl ;
+time '2000-01-01 00:00:00Z' ;
+rep_type $which ;
+rep_desc 'random text, for now' ;
+
+my %prev ;
+
+## TODO: Branching, moving, and binary files
+
+rev_root "depot"    if $which eq 'p4' ;
+rev_root "foo"      if $which eq 'cvs' ;
+rev_root "whatever" if $which eq 'revml' ;
+
+my $is_first = 1 ;
+
+## Note the overlapping range here.  Batch 1 (0 or 1) needs to have a digest
+## of the rev _before_ the start of the batch unless it's in bootstrap mode.
+for my $change_num ( ( ! $batch ) ? (1..3) : $bootstrap ? (4..6) : (3..6) ) {
+   print STDERR "emitting \@$change_num:\n" if $debug ;
+
+   my $digest_mode = $is_first && $batch && ! $bootstrap ;
+
+   for my $r ( @{$changes[$change_num]} ) {
+
+      next if ( $is_first
+	 && ( ! $batch || $digest_mode )
+	 && $r->{action} eq 'delete'
+      ) ;
+
+      print STDERR "   $r->{name}#$r->{rev_id}:" if $debug ;
+
+      my $pr = $prev{$r->{name}} ;
+
+      start_rev ;
+      name        $r->{name} ;
+      type        $r->{type} ;
+
+      if ( ! $digest_mode ) {
+	 p4_info     $r->{p4_info}  if defined $r->{p4_info} ;
+	 cvs_info    $r->{cvs_info} if defined $r->{cvs_info} ;
+      }
+
+      rev_id      $r->{rev_id} ;
+      change_id   $r->{change_id}   if defined $r->{change_id} ;
+
+      my $digestion = 1 ;
+
+      if ( $digest_mode ) {
+	 print STDERR " digest" if $debug ;
+      }
+      else {
+	 time      $r->{time} ;
+	 mod_time  $r->{mod_time} if defined $r->{mod_time} ;
+
+	 user_id   $r->{user_id} ;
+
+         if ( $r->{labels} ) {
+	    label $_ for @{$r->{labels}} ;
+	 }
+
+	 ## In p4, all files in a change number have an identical comment.
+	 comment $r->{comment} ;
+
+	 if ( $r->{action} eq 'delete' ) {
+	    print STDERR " delete" if $debug ;
+	    defaultWriter->delete() ;
+	    $digestion = 0 ;
+	 }
+	 else {
+	    if ( ! $pr ) {
+	       print STDERR " content" if $debug ;
+	       content $r->{content}, encoding => 'none' ;
+	    }
+	    else {
+	       print STDERR " delta" if $debug ;
+	       base_rev_id $pr->{rev_id} ;
+	       ## TODO: Migrate to a perl-coded diff -u
+	       open  R0, ">$f0"                   or die "$!: $f0" ; 
+	       print R0 $pr->{content}            or die "$!: $f0" ;
+	       close R0                           or die "$!: $f0" ;
+	       open  R1, ">$f1"                   or die "$!: $f1" ; 
+	       print R1 $r->{content}             or die "$!: $f1" ;
+	       close R1                           or die "$!: $f1" ;
+	       my $diff = `diff -u $f0 $f1` ;
+	       $diff =~ s/^.+?^.+?^//ms ;
+	       delta $diff, type => 'diff-u', encoding => 'none' ;
+	    }
+	 }
+      }
+      digest md5_base64( $r->{content} ), type => 'MD5', encoding => 'base64'
+         if $digestion ;
+
+      $prev{$r->{name}} = $r ;
+      if ( $debug ) {
+	 print STDERR " #$r->{rev_id}" ;
+	 print STDERR " @$r->{change_id})" if defined $r->{change_id} ;
+	 print STDERR " ($r->{action})\n" ;
+      }
+   }
+   print STDERR "\n" if $debug ;
+   $is_first = 0 ;
+}
+
+END {
+   if ( -f $f0 ) {
+      unlink $f0 or warn "$!: $f0" ;
+   }
+   if ( -f $f1 ) {
+      unlink $f1 or warn "$!: $f1" ;
+   }
+}
+
+endAllTags ;

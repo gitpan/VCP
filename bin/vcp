@@ -1,0 +1,336 @@
+#!/usr/local/bin/perl -w
+
+=head1 NAME
+
+vcp - Copy versions of files between repositories and/or RevML
+
+=head1 SYNOPSIS
+
+   vcp [vcp_opts] src[:files] [src_opts] [dest:[<location>]] [dest_opts]
+
+   vcp cvs:/mymodule/... -r1.1: p4://depot/mymodule
+   vcp p4://depot/mainbranch/...@100-105 revml:
+   vcp help
+   vcp revml: --dtd <foo.dtd> --save_dtd
+
+=head1 STATUS
+
+Alpha code.  Please report bugs to revml@perforce.com.
+
+=head1 DESCRIPTION
+
+vcp ('version copy') copies versions and version ranges of files from
+one repository to another, translating as much as possible along the
+way.
+
+This allows you to copy and translate ranges of revisions of files
+between different vendors' revision storage systems.
+
+Inputs and output classes currently available are:
+
+   Class    Source     Destination
+   cvs        x            x
+   p4         x            x
+   revml      x            x
+
+The general syntax of the vcp command line is:
+
+   vcp [vcp_opts] <source> [src_opts] <dest> [dest_opts]
+
+where C<E<lt>sourceE<gt>> and C<E<lt>destE<gt>> look like
+
+   scheme:user(view):password@server:filespec
+
+where
+
+   scheme is a repository type ('p4', 'cvs', 'revml'), or special
+      command ('help', 'save_dtd').
+
+   user, view, and password are settings required
+      for repository access. CVS does not use (view).  For p4,
+      (view) is the client setting (P4CLIENT or -c option).
+
+   server is the repository spec, CVSROOT for CVS or P4PORT for p4.
+
+   filespec is the file specification for the files to move.  As
+      much as possible, this spec is similar to the native filespecs
+      used by the repository indicated by the scheme.
+
+Filespecs are often omitted from the destination, in which case
+the colon is also optional.
+
+=head2 OPTIONS
+
+All general options to vcp must precede the command.  Command-specific
+options must come after the command.  Command specific options are
+documented in the appropriate VCP::Source::... or VCP::Dest::...
+man pages for now.  At some point, the help command will be extended
+to be able to display them.
+
+=over
+
+=item --debug [spec], -d [spec]
+
+Enables display of debugging information.  Default is to enable
+all debugging if no spec is provided.  A debug spec is part or all of
+a module name like C<source::revml> or a shell-like regular expression to be
+compared to a module name.  All are compared case insensitively.
+
+Any debug specs you provide that did not happen to cause any messages
+to be emitted by the time vcp exits.  vcp will also list
+all of the internal names that might have matched but didn't to 
+give you a clue as to what specs might be useful.
+
+The special name 'what' is guaranteed to not match anything, so you can
+do
+
+   vcp -d what ...
+
+to see the list of names that might be useful for the arguments '...' .
+
+This list may change from run to run based on what modules asked to see
+if they should emit debugging information.
+
+You may use multiple
+C<-d> options or provide a comma separated list to enable debugging
+within that module.
+
+Debugging messages are emitted to stderr.
+
+=item --help, -h, -?
+
+These are all equivalent to C<p4 help>.
+
+=back
+
+=head1 ARGUMENTS
+
+Commands are either built in to vcp or are the names of repository sources.
+
+These are brief descrioptions, see the rest of this page for more details
+on the more complicated ones.
+
+=over
+
+=item help
+
+Displays the full help text.
+
+=item save_dtd [<how>]
+
+Outputs the DTD to stdout if <version> is C<->, or to a file named like
+v1_000.pm if <how> looks like a version number, or in a module named
+after <how> if <how> contains '::'.  This file is placed in
+./lib/RevML/DTD or ./RevML/DTD or ./, whichever is found first.  No
+directories will be created.
+
+=back
+
+=head1 ENVIRONMENT
+
+The environment is often used to set context for the source and destination
+by way of variables like P4USER, P4CLIENT, CVSROOT, etc.
+
+There is also one environment variable that is used to enable
+command line debugging.  The VCPDEBUG variable acts just like a leading
+"-d=$VCPDEBUG" was present on the command line.
+
+   VCPDEBUG=main,p4
+
+(see L</--debug, -d> for more info).
+
+=cut
+
+use strict ;
+
+use Getopt::Long ;
+use File::Basename ;
+use File::Spec ;
+use VCP ;
+use VCP::Debug qw( :debug ) ;
+use XML::Doctype ;
+
+
+{
+   my $pname = basename( $0 ) ;
+   my $dtd_spec ;
+   my $arg = 'help' ;
+
+   usage_and_exit() unless @ARGV ;
+
+   enable_debug( split /,/, $ENV{VCPDEBUG} ) if defined $ENV{VCPDEBUG} ;
+
+   ## Parse up to the first non-option, then let sources & dests parse
+   ## from there.
+   Getopt::Long::Configure( qw( no_auto_abbrev no_bundling no_permute ) ) ;
+   GetOptions(
+      'debug|d=s'         => sub {
+         enable_debug( length $_[1] ? split /,/, $_[1] : () )
+      },
+      'help|h|?'          => \&help_and_exit,
+   ) or options_and_exit() ;
+
+   usage_and_exit() unless @ARGV ;
+
+   $arg = shift ;
+
+   help_and_exit() if $arg eq 'help' ;
+
+   my @errors ;
+
+   ## We pass \@ARGV to the constructors for source and dest so that
+   ## they may parse some of @ARGV and leave the rest.  Actually, that's
+   ## only important for sources, since the dests should consume it all
+   ## anyway.  But, for consistency's sake, I do the same to both.
+
+   my $source ;
+   if ( defined $arg ) {
+      my ( $scheme, $spec ) = $arg =~ /^(.*?)(?::(.*))?$/ ;
+      if ( defined $spec && ! length $spec
+         && @ARGV
+	 && ( $ARGV[0] eq '-' || substr( $ARGV[0], 0, 1 ) ne '-' )
+	 && index( $ARGV[0], ':' ) < 0
+      ) {
+         $spec = shift ;
+      }
+
+      $spec = defined $spec ? "$scheme:$spec" : $scheme ;
+      eval {
+	 $source = load_module( "VCP::Source::$scheme", $spec, \@ARGV );
+	 die "unknown source scheme '$scheme', try ",
+	    list_modules( "VCP::Source" ), "\n"
+	    unless defined $source ;
+      } ;
+
+      push @errors, $@ if $@ ;
+   }
+
+   my $dest ;
+   if ( defined $source ? $source->dest_expected : @ARGV ) {
+      my $scheme ;
+      my $spec = '' ;
+      if ( @ARGV ) {
+	 ( $scheme, $spec ) = shift =~ /^(.*?)(?::(.*))?$/ ;
+	 if ( defined $spec && ! length $spec
+	    && @ARGV
+	    && ( $ARGV[0] eq '-' || substr( $ARGV[0], 0, 1 ) ne '-' )
+	    && index( $ARGV[0], ':' ) < 0
+	 ) {
+	    $spec = shift ;
+	 }
+      }
+      else {
+	 $scheme = 'revml' ;
+      }
+
+      $spec = defined $spec ? "$scheme:$spec" : $scheme ;
+      eval {
+	 $dest = load_module("VCP::Dest::$scheme", $spec, \@ARGV );
+	 die "unknown destination scheme '$scheme', try ",
+	    list_modules( "VCP::Dest" ), "\n"
+	    unless defined $dest ;
+      } ;
+      push @errors, $@ if $@ ;
+      @ARGV = () ;
+   }
+   elsif ( @ARGV ) {
+      push @errors, "extra parameters: " . join( ' ', @ARGV ) . "\n" ;
+   }
+
+   if ( debugging ) {
+      debug 'vcp: no dest expected' unless ! $source || $source->dest_expected ;
+      debug 'vcp: $source is ', $source ;
+      debug 'vcp: $dest   is ',   $dest ;
+   }
+
+   unless ( @errors ) {
+      my $cp = VCP->new( $source, $dest ) ;
+      my $header = {} ;
+      my $footer = {} ;
+      $cp->copy_all( $header, $footer ) ;
+   }
+
+   if ( @errors ) {
+      my $errors = join( '', @errors ) ;
+      $errors =~ s/^/$pname: /mg ;
+      die $errors ;
+   }
+
+}
+
+###############################################################################
+###############################################################################
+
+sub load_module {
+   my ( $name, @args ) = @_ ;
+
+   my $filename = $name ;
+   $filename =~ s{::}{/}g ;
+
+   my $x ;
+   {
+      local $@ ;
+      my $v = eval "require '$filename.pm'; 1" ;
+      return undef if $@ && $@ =~ /^Can't locate / ;
+      $x = $@ ;
+   }
+   die $x if $x ;
+
+   debug "vcp: loaded '$name' from '", $INC{"$filename.pm"}, "'"
+      if debugging 'main', $name ;
+   return $name->new( @args ) ;#if $v == 1 ;
+}
+
+
+sub list_modules {
+   my ( $prefix ) = @_ ;
+
+   my $dirname = $prefix . '::' ;
+   $dirname =~ s{(::)+}{/}g ;
+
+   my %seen ;
+   for ( @INC ) {
+      my $dir = File::Spec->catdir( $_, $dirname ) ;
+      opendir( D, $dir ) or next ;
+      my @files = grep $_ !~ /^\.\.?$/ && s/\.pm$//, readdir D ;
+      closedir D ;
+      $seen{$_} = 1 for @files ;
+   }
+
+   my $list = join( ', ', sort keys %seen ) ;
+
+   $list =~ s/,([^,]*)$/ or$1/ ;
+   return $list ;
+}
+
+
+sub usage_and_exit {
+   require Pod::Usage ;
+   Pod::Usage::pod2usage( -message => shift, -verbose => 0, -exitval => 1 ) ;
+}
+
+sub options_and_exit {
+   require Pod::Usage ;
+   Pod::Usage::pod2usage( -verbose => 1, -exitval => 1 ) ;
+}
+
+sub help_and_exit {
+   require Pod::Usage ;
+   Pod::Usage::pod2usage( -verbose => 2, -exitval => 0 ) ;
+}
+
+=head1 AUTHOR
+
+Barrie Slaymaker <barries@slaysys.com>
+
+=head1 COPYRIGHT
+
+Copyright 2000, Perforce Software, Inc.  All Rights Reserved
+
+This will be licensed under a suitable license at a future date.  Until
+then, you may use this for evaluation purposes.  Besides which, it's
+alpha code, so you shouldn't depend on it anyway.
+
+=cut
+
+

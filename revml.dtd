@@ -1,0 +1,270 @@
+<!-- DTD for RevML (see <revml> version attdef for version)
+     Authors: Barrie Slaymaker   <barries@slaysys.com>
+    .         Greg Kroah-Hartman <greg@kroah.com>
+              Sean McCune        <sean@sean-mccune.com>
+-->
+
+<!-- The order is specified for the tags so that they are in an appropriate
+     order for an import utility.  Some of these constraints may be relaxed
+     in the future, but in general the metadata will always precede the
+     object data.  Import utilities *must* cache all necessary metadata
+     regardless of order of occurence, then may discard it once the
+     <content> is seen.
+-->
+
+<!ELEMENT revml
+    (
+        time,
+        rep_type,
+        rep_desc,
+        comment?,
+        file_count?,
+        ((branch_map_id,branch_map_sn)|branch*)?,
+	rev_root,
+        rev*
+    )
+>
+    <!ATTLIST   revml
+        version     CDATA   #FIXED   "0.27"
+    >
+
+<!ELEMENT rep_type (#PCDATA) >
+    <!-- 'p4', 'cvs', 'sourcesafe', etc. -->
+
+<!ELEMENT rep_desc (#PCDATA) >
+    <!-- The version number, platform, etc. for the repository.  This
+         may be needed
+         so that import utilities can figure out what tags mean what
+         when a particular repository version changes.
+
+         This is often the output of 'p4 info' or 'cvs -v' + cvs
+         environment settings and the cvs -l command.
+
+    -->
+
+<!ELEMENT file_count (#PCDATA) >
+    <!-- How many files to be processed.  This is because we can't possibly
+         load a large revml file in to memory, yet it's nice for an import
+         utility to be able to display a % done progress bar.  There is no
+         semantic constraint on this number: it must only be used for
+         progress indication, and may be any nonnegative integer value.
+         It may also be wrong, and import utilities must still function
+         correctly but give a warning.
+     -->
+
+<!ELEMENT branch_map_id (#PCDATA) >
+    <!-- Required in all revml files that do not contain <branch> elements but
+    do contain <branch_id> elements.  Also required in branch map files.
+    -->
+
+<!ELEMENT branch_map_sn (#PCDATA) >
+    <!-- Indicates the serial number of the branch map.  This is required
+         in all revml files that contain the <branch_map> tag.  It is used
+         to detect the use of different branch mappings between the import
+         and export utilities.
+    -->
+
+<!ELEMENT branch
+    (branch_id, cvs_branch_id?, p4_branch_id?, sourcesafe_branch_id?)
+>
+    <!-- <branch> elements declare names for a branch in different
+         repositories.  This is provisional.  The mapping of branches
+         between foreign repositories is not designed yet.
+         A set of <branch> elements defines a mapping of branches
+         from one repository to another.  It may be incorporated in the
+         same revml file as the revision data, or it may be defined
+         externally, in which case it must be visible to both the
+         import and the export utilities.
+
+         In particular, there is a cohesive concept of a branch
+         across multiple files in some products but not in others.
+
+         Whether or not and if so, how, we deal with this is going to
+         wait until we get to some real implementations and encounter
+         the devil in the details.
+
+         Among other things, we probably need a branchml DTD for
+         branch mappings that are separate.  We may also need facilities
+         for split branch mappings: cvs_branch -> branch_id in one
+         file, and branch_id -> p4_branch in another file.
+
+         The that DTD must be included in the revml DTD so that branch
+         mappings can be shipped along in a single file.
+    -->
+
+<!ELEMENT branch_id         (#PCDATA) >
+    <!-- cvs:      <branch_id>r_1_3_b</branch_id>
+         p4:       <branch_id>devel</branch_id>
+         The contents of this element is used to identify the branch being
+         referred to by the export utility.  When in a <branch> element
+         it's contents will usually be duplicated in a vendor-specific
+         branch tag.
+    -->
+
+<!ELEMENT cvs_branch_id        (#PCDATA) >
+    <!-- Typically a rev tag -->
+
+<!ELEMENT p4_branch_id         (#PCDATA) >
+<!ELEMENT sourcesafe_branch_id (#PCDATA) >
+
+<!ELEMENT rev_root (#PCDATA) >
+    <!-- The root of the tree that was extracted to RevML.  This
+         is usually the source file spec up to (but not including) the
+	 first component that does not contain a wildcard.
+    -->
+
+<!ELEMENT rev
+    (
+        name,
+        type,
+	(
+	    (rev_id,change_id?,digest)
+	    |(
+	        (cvs_info|p4_info|source_safe_info|pvcs_info)?,
+	        branch_id?,
+	        rev_id,
+	        change_id?,
+	        time,
+	        mod_time?,
+	        user_id,
+	        (p4_action|sourcesafe_action)?,
+	        label*,
+	        lock?,
+	        comment?,
+	        (delete|move|((content|(base_name?,base_rev_id,delta)),digest))
+	    )
+	)
+    ) >
+
+    <!-- A few words about the digest, content, and delta elements:
+
+         We could have allowed <content> or <delta> without the
+	 digest, but it's safer this way and the digest is small.
+	 <delta> tags should only be used for second and later <rev>s for
+	 a given <name>.
+
+	 A digest alone is only used for base revisions that should already
+	 be in the target repository, for incremental updates.  If there's
+	 no <delete/>, <move/> or <content>..</content> elements, it's
+	 a base rev digest.
+
+	 The first <rev> for a given name must not contain a <delta>.  It
+	 should contain <content> if this is not an incremental update, or
+	 just a <digest> if it is.
+	 
+	 The rev//digest with no <content> can only be used as the first
+	 <rev> in the file for a given <name>.  it indicates that the
+	 <rev_id> revision of <name> should be recovered from the target
+	 repository and then checked against the <digest> field.
+
+	 The <base_name> is optional and is assumed to be the same as
+	 <name> if not present.  <base_rev_id> could be made optional someday,
+	 too.  These are provided so that branching may be indicated and
+	 so that the RevML reader does not need to perform revision number
+	 math, respectively.
+
+	 Yes, <base_name> and <base_rev_id> could have been attributes
+	 of <delta>.  They're not since they contain metadata, and I've
+	 been trying to limit the use of attributes to describing
+	 encodings, etc.
+    -->
+
+    <!-- We will add repository_... tags as needed to carry along all necessary
+         repository specific information without alteration.
+    -->
+
+<!ELEMENT name          (#PCDATA) >
+    <!-- the file name, in Unix format, relative to the repository root.
+         The file/directory names '.', '..', and '' are not legal.
+         cvs:       'src/iface/ftree/fi.c
+         p4:        'depot/perl/perl.c', not '//depot/perl/perl.c'
+
+         We will add vendor_... tags if this format causes loss of
+         information.
+    -->
+
+<!ELEMENT type          (#PCDATA) >
+    <!-- 'text' or 'binary' -->
+
+<!-- Product specific tags.  These are only used when importing data in
+     to the same type of repository it was exported from.
+-->
+
+<!ELEMENT p4_info           (#PCDATA) >
+    <!-- No need for rev_id here, it's in the main section -->
+
+<!ELEMENT cvs_info          (#PCDATA) >
+
+<!ELEMENT source_safe_info  (#PCDATA) >
+
+<!ELEMENT pvcs_info         (#PCDATA|trunk_rev_id|attrib)* >
+
+<!-- Repository-nuetral tags.  These must be generated by all export
+     utilities, and must be used by all import utilities when importing
+     from a foreign repository type.
+-->
+
+<!ELEMENT rev_id        (#PCDATA) >
+    <!-- A small integer indicating the revision number of a file
+         *within the branch*.
+
+         cvs:        "3" if the cvs rev is "1.3" 
+         p4:         the file revision number
+         sourcesafe: the file version number
+    -->
+
+<!ELEMENT change_id     (#PCDATA) >
+    <!-- Export utilities are responsible for grouping revisions together
+         using a unique change_id.  change_id's are integers starting at 1
+         for each file.
+    -->
+
+<!ELEMENT trunk_rev_id  (#PCDATA) >
+
+<!ELEMENT attrib        (#PCDATA) >
+
+<!ELEMENT lock          (time?, user_id) >
+
+<!ELEMENT time          (#PCDATA) >
+    <!-- All times are in ISO-8601 format in GMT/UCT0
+         <time>2000-12-31 23:59:59Z</time>
+    -->
+
+<!ELEMENT mod_time      (#PCDATA) >
+    <!-- Modification time -->
+    <!-- All times are in ISO-8601 format, GMT -->
+
+<!ELEMENT p4_action         (#PCDATA) >
+<!ELEMENT sourcesafe_action (#PCDATA) >
+
+<!ELEMENT label         (#PCDATA) >
+
+<!ELEMENT user_id       (#PCDATA) >
+
+<!ELEMENT comment       (#PCDATA) >
+
+<!ELEMENT delete EMPTY >
+
+<!ELEMENT move (name) >
+    <!-- Where the file moved to -->
+
+<!ELEMENT delta (#PCDATA) >
+    <!ATTLIST delta
+        type         (diff-u)       #REQUIRED
+        encoding     (none|base64)  #REQUIRED
+    >
+
+<!ELEMENT base_name (#PCDATA) >
+<!ELEMENT base_rev_id (#PCDATA) >
+
+<!ELEMENT content (#PCDATA) >
+    <!ATTLIST content
+        encoding     (none|base64)  #REQUIRED
+    >
+
+<!ELEMENT digest      (#PCDATA) >
+    <!ATTLIST digest
+        type          (MD5)         #REQUIRED
+        encoding      (base64)      #REQUIRED
+    >
+
