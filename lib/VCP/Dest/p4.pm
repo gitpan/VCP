@@ -113,7 +113,12 @@ sub p4 {
       unshift @{$_[0]}, '-u', $user ;
    }
 
-   return $self->SUPER::p4( @_ ) ;
+
+   my $tmp = $ENV{PWD} ;
+   delete $ENV{PWD} ;
+
+   $self->SUPER::p4( @_ ) ;
+   $ENV{PWD} = $tmp if defined $tmp ;
 }
 
 

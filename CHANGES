@@ -1,5 +1,12 @@
 CHANGES for vcp - Version CoPy
 
+0.066 Mon May 21 10:34:50 EDT 2001
+   - Remove PWD from the environment when calling the p4 command, so as to
+     force it to use the cwd()
+   - Improve logging of the directory the p4 command (and all commands) are
+     being run in.
+   - Many thanks to Matthew Attaway for help in finding and testing this one.
+
 0.064 Tue May  8 11:26:11 EDT 2001
    - Some versions of patch have problems handling embedded NUL (\0x00)
      characters. Fixed gentrevml and VCP::Dest::revml to not generate

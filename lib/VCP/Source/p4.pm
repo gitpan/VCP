@@ -13,15 +13,16 @@ VCP::Source::p4 - A Perforce p4 repository source
    vcp p4://depot/...@-2,#head    # changes 8..10
    vcp p4:...@-2,#head            # changes 8..10, if only one depot
 
-To specify a user name of 'user', P4PASSWD 'pass', and port 'port:1666',
+To specify a user name of 'user', P4PASSWD 'pass', and port 'host:1666',
 use this syntax:
 
-   vcp p4:user:client:pass@port:1666:files
+   vcp p4:user(client)password@host:1666:files
 
-Note: the password will be passed in the environment variable P4PASSWD
-so it shouldn't show up in error messages.
-User, client and the server string will
-be passed as command line options to make them show up in error output.
+Note: the password will be passed in the environment variable P4PASSWD so it
+shouldn't show up in error messages. This means that a password specified in a
+P4CONFIG file will override the password you set on the command line. This is a
+bug.  User, client and the server string will be passed as command line options
+to make them show up in error output.
 
 You may use the P4... environment variables instead of any or all
 of the fields in the p4: repository specification.  The repository
@@ -233,7 +234,11 @@ sub p4 {
       unshift @{$_[0]}, '-u', $user ;
    }
 
-   return $self->SUPER::p4( @_ ) ;
+   my $tmp = $ENV{PWD} ;
+   delete $ENV{PWD} ;
+
+   $self->SUPER::p4( @_ ) ;
+   $ENV{PWD} = $tmp if defined $tmp ;
 }
 
 

@@ -806,14 +806,20 @@ sub AUTOLOAD {
    unshift @redirs, '<', \undef
       unless grep $_ eq '<', @redirs ;
 
-   debug "vcp: running ", join( ' ', map "'$_'", $self->command, @$args )
+   debug "vcp: running ", join( ' ', map "'$_'", $self->command, @$args ),
+      " in ", defined $self->{COMMAND_CHDIR}
+         ?  $self->{COMMAND_CHDIR}
+	 : "undef"
       if debugging $self, join( '::', ref $self, $cmd ) ;
    
    my $h = IPC::Run::harness(
       [ $self->command, @$args ],
       @redirs,
       defined $self->{COMMAND_CHDIR}
-         ? ( init => sub { chdir $self->{COMMAND_CHDIR} } )
+         ? ( init => sub {
+	    chdir $self->{COMMAND_CHDIR}
+	       or die "$! chdiring to $self->{COMMAND_CHDIR}"
+	    } )
 	 : (),
    ) ;
    $h->run ;

@@ -12,9 +12,10 @@ use Carp ;
 use Cwd ;
 use File::Path ;
 use File::Spec ;
+use IPC::Run qw( run ) ;
 use POSIX ':sys_wait_h' ;
 use Test ;
-use IPC::Run qw( run ) ;
+use VCP::TestUtils ;
 
 my $cwd = cwd ;
 
@@ -39,17 +40,18 @@ my @vcp = ( @perl, $vcp ) ;
 
 my $t = -d 't' ? 't/' : '' ;
 
-my $tmp = File::Spec->tmpdir ;
-my $p4repo = File::Spec->catdir( $tmp, "p4repo" ) ;
-my $p4work = File::Spec->catdir( $tmp, "p4work" ) ;
-my ( $p4user, $p4client, $p4port ) = qw( p4_t_user p4_t_client 19666 ) ;
-my $p4spec = "p4:$p4user($p4client):\@$p4port:" ;
+my $p4_options = p4_options "p4_" ;
+#my $p4repo = File::Spec->catdir( $tmp, "p4repo" ) ;
+#my $p4work = File::Spec->catdir( $tmp, "p4work" ) ;
+#my ( $p4user, $p4client, $p4port ) = qw( p4_t_user p4_t_client 19666 ) ;
+my $p4spec = "p4:$p4_options->{user}($p4_options->{client}):\@$p4_options->{port}:" ;
 
+my $tmp = File::Spec->tmpdir ;
 my $cvsroot = File::Spec->catdir( $tmp, "p4cvsroot" ) ;
 my $cvswork = File::Spec->catdir( $tmp, "p4cvswork" ) ;
 
 END {
-   rmtree [ $p4repo, $p4work, $cvsroot, $cvswork ] ;
+   rmtree [ $p4_options->{repo}, $p4_options->{work}, $cvsroot, $cvswork ] ;
 }
 
 $ENV{CVSROOT} = $cvsroot;
@@ -88,7 +90,7 @@ sub {
    eval {
       my $out ;
       ## $in and $out allow us to avoide execing diff most of the time.
-      run [ @vcp, "revml:$infile", $p4spec, '-w', $p4work ], \undef
+      run [ @vcp, "revml:$infile", $p4spec, '-w', $p4_options->{work} ], \undef
 	 or die "`$vcp revml:$infile $p4spec` returned $?" ;
 
       ok( 1 ) ;
@@ -248,7 +250,7 @@ sub {
    my $diff = '' ;
    eval {
       run
-         [ qw( p4 -u ), $p4user, "-c", $p4client, "-p", $p4port, qw( counter change ) ],
+         [ qw( p4 -u ), $p4_options->{user}, "-c", $p4_options->{client}, "-p", $p4_options->{port}, qw( counter change ) ],
 	 \undef, \$incr_change ;
       chomp $incr_change ;
       die "Invalid change counter value: '$incr_change'"
@@ -259,7 +261,7 @@ sub {
       my $out ;
 
       ## $in and $out allow us to avoide execing diff most of the time.
-      run [ @vcp, "revml:$infile", "$p4spec", '-w', $p4work ], \undef
+      run [ @vcp, "revml:$infile", "$p4spec", '-w', $p4_options->{work} ], \undef
 	 or die "`$vcp revml:$infile $p4spec` returned $?" ;
 
       ok( 1 ) ;
@@ -376,25 +378,22 @@ $why_skip .= "p4d command not found\n" unless ( `p4d -V` || 0 ) =~ /^Perforce/ ;
 unless ( $why_skip ) {
    ## Give vcp ... p4:... a repository to work with.  Note that it does not
    ## use $p4work, just this test script does.
-   rmtree [ $p4repo, $p4work ] ;
-   mkpath [ $p4repo, $p4work ], 0, 0700 ;
+   rmtree [ $p4_options->{repo}, $p4_options->{work} ] ;
+   mkpath [ $p4_options->{repo}, $p4_options->{work} ], 0, 0700 ;
 #   END { rmtree [$p4repo,$p4work] }
 
    rmtree [ $cvsroot, $cvswork ] ;
    mkpath [ $cvsroot, $cvswork ], 0, 0700 ;
 #   END { rmtree [$cvsroot,$cvswork] }
 
-   $ENV{P4USER}= $p4user ;
-   $ENV{P4CLIENT}= $p4client ;
-   $ENV{P4PORT} = $p4port ;
-
-   launch_p4d() ;
-   init_client() ;
-   init_cvs() ;
    $ENV{P4USER}   = "foobar_user" ;
    $ENV{P4PORT}   = "foobar_port" ;
    $ENV{P4CLIENT} = "foobar_client" ;
    $ENV{P4PASSWD} = "foobar_passwd" ;
+
+   launch_p4d $p4_options ;
+   init_p4_client $p4_options ;
+   init_cvs() ;
 }
 
 print STDERR $why_skip if $why_skip ;
@@ -402,61 +401,6 @@ print STDERR $why_skip if $why_skip ;
 $why_skip ? skip( 1, '' ) : $_->() for @tests ;
 
 ###############################################################################
-
-sub launch_p4d {
-   ## Ok, this is wierd: we need to fork & run p4d in foreground mode so that
-   ## we can capture it's PID and kill it later.  There doesn't seem to be
-   ## the equivalent of a 'p4d.pid' file.
-   my $p4d_pid = fork ;
-   unless ( $p4d_pid ) {
-      ## Ok, there's a tiny chance that this will fail due to a port
-      ## collision.  Oh, well.
-      exec 'p4d', '-f', '-r', $p4repo ;
-      die "$!: p4d" ;
-   }
-   sleep 1 ;
-   ## Wait for p4d to start.  'twould be better to wait for P4PORT to
-   ## be seen.
-   select( undef, undef, undef, 0.250 ) ;
-   END {
-      kill 'INT',  $p4d_pid or die "$! $p4d_pid" ;
-      my $t0 = time ;
-      my $dead_child ;
-      while ( $t0 + 15 > time ) {
-         select undef, undef, undef, 0.250 ;
-	 $dead_child = waitpid $p4d_pid, WNOHANG ;
-	 warn "$!: $p4d_pid" if $dead_child == -1 ;
-	 last if $dead_child ;
-      }
-      unless ( defined $dead_child && $dead_child > 0 ) {
-	 print "terminating $p4d_pid\n" ;
-	 kill 'TERM', $p4d_pid or die "$! $p4d_pid" ;
-	 $t0 = time ;
-	 while ( $t0 + 15 > time ) {
-	    select undef, undef, undef, 0.250 ;
-	    $dead_child = waitpid $p4d_pid, WNOHANG ;
-	    warn "$!: $p4d_pid" if $dead_child == -1 ;
-	    last if $dead_child ;
-	 }
-      }
-      unless ( defined $dead_child && $dead_child > 0 ) {
-	 print "killing $p4d_pid\n" ;
-	 kill 'KILL', $p4d_pid or die "$! $p4d_pid" ;
-      }
-   }
-}
-
-
-sub init_client {
-   my $client_desc = `p4 client -o` ;
-   $client_desc =~ s(^Root.*)(Root:\t$p4work)m ;
-   $client_desc =~ s(^View.*)(View:\n\t//depot/...\t//$ENV{P4CLIENT}/...\n)ms ;
-   open( P4, "| p4 client -i" ) or die "$! p4 client -i" ;
-   print P4 $client_desc ;
-   close P4 ;
-}
-
-
 sub init_cvs {
    ## Give vcp ... cvs:... a repository to work with.  Note that it does not
    ## use $cvswork, just this test script does.
