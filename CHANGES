@@ -1,6 +1,23 @@
 CHANGES for vcp - Version CoPy
 
-0.21 - In development
+0.22 - Sun Jul 22 23:52:46 EDT 2001
+   - VCP::Source::p4 now uses VCP::Utils::p4::parse_p4_repo_spec().
+     No functionality changes.
+   - Created VCP::Utils::cvs to enable...
+   - ...VCP::Source::cvs now checks out the appropriate module so the user
+     does not need to have a checked-out version.
+   - VCP::Dest::cvs no longer offers the --rev-root option, or any options
+     at all for that matter.
+   - The scheme and filespec are now stored in VCP::Plugin by
+     VCP::Plugin::parse_repo_spec(), for ease of access and consistency.
+   - Got rid of the overly funky VCP::Plugin::AUTOLOAD(). This used to
+     emulate a class method that would run an external program of the
+     same name as the method after that name was registered with the
+     VCP::Plugin instance.  Too baroque, now the VCP::Utils::foo classes
+     provide however many invocation methods are needed to both
+     VCP::Source::foo and VCP::Dest::foo.
+
+0.21 - Fri Jul 20 23:08:43 EDT 2001
    - Fixed VCP::Dest::p4; it was adding too many directories to a file, so
      files ended up with the first directory or two repeated. reported by david
      d zuhn <zoo@bravara.com>

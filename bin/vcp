@@ -182,7 +182,7 @@ use XML::Doctype ;
 
    enable_debug( split /,/, $ENV{VCPDEBUG} ) if defined $ENV{VCPDEBUG} ;
 
-   debug "command line:", join " ", map "'$_'", @ARGV if debugging "main" ;
+   debug "vcp: ", join " ", map "'$_'", $pname, @ARGV if debugging "main" ;
 
    ## Parse up to the first non-option, then let sources & dests parse
    ## from there.

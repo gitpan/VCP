@@ -91,9 +91,9 @@ sub new {
    ## Parse the options
    my ( $spec, $options ) = @_ ;
 
-   my $parsed_spec = $self->parse_p4_repo_spec( $spec ) ;
+   $self->parse_p4_repo_spec( $spec ) ;
 
-   my $files = $parsed_spec->{FILES} ;
+   my $files = $self->repo_filespec ;
 
    $self->deduce_rev_root( $files )
       if defined $files && length $files ;
@@ -102,7 +102,7 @@ sub new {
 
    GetOptions( "ArGhOpTioN" => \"" ) or $self->usage_and_exit ; # No options!
 
-   $self->command_chdir( $self->work_root ) ;
+   $self->init_p4_view ;
 
    return $self ;
 }

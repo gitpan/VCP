@@ -6,32 +6,35 @@ VCP::Source::cvs - A CVS repository source
 
 =head1 SYNOPSIS
 
-   vcp cvs:path/... -r foo        # all files in path and below labelled foo
-   vcp cvs:path/... -r foo:       # All revs of files labelled foo and newer,
-                                  # including files not tagged with foo.
-   vcp cvs:path/... -r 1.1:1.10   # revs 1.1..1.10
-   vcp cvs:path/... -r 1.1:       # revs 1.1 and up
-
-   vcp cvs:path/... -d ">=2000-11-18 5:26:30"
+   vcp cvs:module/... -d ">=2000-11-18 5:26:30"
                                   # All file revs newer than a date/time
+
+   vcp cvs:module/... -r foo      # all files in module and below labelled foo
+   vcp cvs:module/... -r foo:     # All revs of files labelled foo and newer,
+                                  # including files not tagged with foo.
+   vcp cvs:module/... -r 1.1:1.10 # revs 1.1..1.10
+   vcp cvs:module/... -r 1.1:     # revs 1.1 and up
 
    ## NOTE: Unlike cvs, vcp requires spaces after option letters.
 
 =head1 DESCRIPTION
 
-Reads a CVS repository.  You must check out the files of interest in to
-a local working directory and run the cvs command from within that
-directory.  This is because the "cvs log" and "cvs checkout" commands
-need to have a working directory to play in.
+Reads a CVS repository.
+
+B<NOTE:> You no longer need to check the desired files out in to a local
+directory.  VCP::Source::cvs now creates it's own checkout for two reasons:
+it's easier and less coupled to the user's system and it's less likely to
+be in some unknown state that causes odd behaviors due to sticky tags, etc.
 
 This module in alpha.
 
 This doesn't deal with branches yet (at least not intentionally).  That will
 require a bit of Deep Thought.
 
-This only deals with filespecs spelled like "/a/b/c" or "a/b/..." for now.
-
-Later, we can handle other filespecs by reading the entire log output.
+This only deals with filespecs with trailing wildcards, like "/a/b/c" or
+"a/b/..." for now.  Later, we can handle filespecs with embedded wildcards
+by logging all possible files and applying the wildcards to the files
+cvs emits, probably using Regexp::Shellish.
 
 =head1 OPTIONS
 
@@ -128,8 +131,8 @@ CVS does not try to protect itself from people checking in things that look
 like snippets of CVS log file: they go in Ok, and they come out Ok, screwing up
 the parser.
 
-So, if you come accross a repository that contains messages that look like "cvs
-log" output, this is likely to go awry.
+So, if a repository contains messages in the log file that look like the 
+output from some other "cvs log" command, things will likely go awry.
 
 At least one cvs repository out there has multiple revisions of a single file
 with the same rev number.  The second and later revisions with the same rev
@@ -137,7 +140,7 @@ number are ignored with a warning like "Can't add same revision twice:...".
 
 =cut
 
-$VERSION = 1.1 ;
+$VERSION = 1.2 ;
 
 # Removed docs for -f, since I now think it's overcomplicating things...
 #Without a -f This will normally only replicate files which are tagged.  This
@@ -164,15 +167,15 @@ use strict ;
 
 use Carp ;
 use Getopt::Long ;
-use VCP::Debug ':debug' ;
 use Regexp::Shellish qw( :all ) ;
 use VCP::Rev ;
+use VCP::Debug ':debug' ;
 use VCP::Source ;
+use VCP::Utils::cvs ;
 
-use base 'VCP::Source' ;
+use base qw( VCP::Source VCP::Utils::cvs ) ;
 use fields (
    'CVS_CUR',            ## The current change number being processed
-   'CVS_FILESPEC',       ## What revs of what files to get.  ARRAY ref.
    'CVS_BOOTSTRAP',      ## Forces bootstrap mode
    'CVS_IS_INCREMENTAL', ## Hash of filenames, 0->bootstrap, 1->incremental
    'CVS_INFO',           ## Results of the 'cvs --version' command and CVSROOT
@@ -183,7 +186,6 @@ use fields (
    'CVS_REV_SPEC',       ## The revision spec to pass to `cvs log`
    'CVS_DATE_SPEC',      ## The date spec to pass to `cvs log`
    'CVS_FORCE_MISSING',  ## Set if -r was specified.
-   'CVS_CVSROOT',        ## What to pass with -d, if anything
 
    'CVS_LOG_CARRYOVER',  ## The unparsed bit of the log file
    'CVS_LOG_FILE_DATA',  ## Data about all revs of a file from the log file
@@ -213,9 +215,7 @@ sub new {
    ## Parse the options
    my ( $spec, $options ) = @_ ;
 
-   my $parsed_spec = $self->parse_repo_spec( $spec ) ;
-
-   my $files = $parsed_spec->{FILES} ;
+   $self->parse_repo_spec( $spec ) ;
 
    my $work_dir ;
    my $rev_root ;
@@ -250,6 +250,7 @@ sub new {
 #      $self->usage_and_exit ;
 #   }
 #
+   my $files = $self->repo_filespec ;
    unless ( defined $rev_root ) {
       $self->deduce_rev_root( $files ) ;
    }
@@ -264,24 +265,24 @@ sub new {
    my $recurse = $files =~ s{/\.\.\.$}{} ;
 
    ## Don't normalize the filespec.
-   $self->filespec( $files ) ;
+   $self->repo_filespec( $files ) ;
 
-   $self->cvsroot( $parsed_spec->{SERVER} ) ;
    $self->rev_spec( $rev_spec ) ;
    $self->date_spec( $date_spec ) ;
    $self->force_missing( defined $rev_spec ) ;
 #   $self->force_missing( $force_missing ) ;
 
    ## Make sure the cvs command is available
-   $self->command( 'cvs', '-Q', '-z9' ) ;
    $self->command_stderr_filter(
       qr{^(?:cvs (?:server|add|remove): use 'cvs commit' to.*)\n}
    ) ;
 
    ## Doing a CVS command or two here also forces cvs to be found in new(),
    ## or an exception will be thrown.
-   $self->command_dir( $work_dir ) if defined $work_dir ;
    $self->cvs( ['--version' ], \$self->{CVS_INFO} ) ;
+
+   ## This does a checkout, so we'll blow up quickly if there's a problem.
+   $self->create_cvs_workspace ;
 
    return $self ;
 }
@@ -297,13 +298,6 @@ sub is_incremental {
       ) ;
 
    return $bootstrap_mode ? 0 : "incremental" ;
-}
-
-
-sub filespec {
-   my VCP::Source::cvs $self = shift ;
-   $self->{CVS_FILESPEC} = shift if @_ ;
-   return $self->{CVS_FILESPEC} ;
 }
 
 
@@ -340,19 +334,6 @@ sub force_missing {
 }
 
 
-sub cvsroot {
-   my VCP::Source::cvs $self = shift ;
-   $self->{CVS_CVSROOT} = shift if @_ ;
-   return $self->{CVS_CVSROOT} ;
-}
-
-
-sub cvsroot_cvs_option {
-   my VCP::Source::cvs $self = shift ;
-   return defined $self->cvsroot ? "-d" . $self->cvsroot : (),
-}
-
-
 sub denormalize_name {
    my VCP::Source::cvs $self = shift ;
    return '/' . $self->SUPER::denormalize_name( @_ ) ;
@@ -372,21 +353,13 @@ sub handle_header {
 }
 
 
-sub cvs {
-   my VCP::Source::cvs $self = shift ;
-
-   unshift @{$_[0]}, $self->cvsroot_cvs_option ;
-   return $self->SUPER::cvs( @_ ) ;
-}
-
-
 sub get_rev {
    my VCP::Source::cvs $self = shift ;
 
    my VCP::Rev $r ;
    ( $r ) = @_ ;
 
-   my $wp = $self->work_path( $r->name, $r->rev_id ) ;
+   my $wp = $self->work_path( "revs", $r->name, $r->rev_id ) ;
    $r->work_path( $wp ) ;
    $self->mkpdir( $wp ) ;
 
@@ -432,15 +405,20 @@ sub copy_revs {
    $self->{CVS_LOG_FILE_DATA} = {} ;
    $self->{CVS_LOG_REV} = {} ;
    $self->{CVS_SAW_EQUALS} = 0 ;
+   # The log command must be run in the directory above the work root,
+   # since we pass in the name of the workroot dir as the first dir in
+   # the filespec.
+   my $tmp_command_chdir = $self->command_chdir ;
+   $self->command_chdir( $self->tmp_dir( "co" ) ) ;
    $self->cvs( [
          "log",
 	 $self->rev_spec_cvs_option,
 	 $self->date_spec_cvs_option,
-	 length $self->filespec ? $self->filespec : (),
+	 length $self->repo_filespec ? $self->repo_filespec : (),
       ],
       '>', sub { $self->parse_log_file( @_ ) },
    ) ;
-
+   $self->command_chdir( $tmp_command_chdir ) ;
    $self->command_stderr_filter( $tmp_f ) ;
 
    my $revs = $self->revs ;

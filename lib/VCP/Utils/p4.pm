@@ -6,7 +6,7 @@ VCP::Utils::p4 - utilities for dealing with the p4 command
 
 =head1 SYNOPSIS
 
-   use VCP::Utils::p4 qw( :all ) ;
+   use base qw( ... VCP::Utils::p4 ) ;
 
 =head1 DESCRIPTION
 
@@ -98,25 +98,83 @@ sub parse_p4_repo_spec {
    $self->repo_user( $user ) ;
    $self->repo_client( $client ) ;
 
+   if ( $self->can( "min" ) ) {
+      my $filespec = $self->repo_filespec ;
+
+      ## If a change range was specified, we need to list the files in
+      ## each change.  p4 doesn't allow an @ range in the filelog command,
+      ## for wataver reason, so we must parse it ourselves and call lots
+      ## of filelog commands.  Even if it did, we need to chunk the list
+      ## so that we don't consume too much memory or need a temporary file
+      ## to contain one line per revision per file for an entire large
+      ## repo.
+      my ( $name, $min, $comma, $max ) ;
+      ( $name, $min, $comma, $max ) =
+	 $filespec =~ m/^([^@]*)(?:@(-?\d+)(?:(\D|\.\.)((?:\d+|#head)))?)?$/i
+	 or die "Unable to parse p4 filespec '$filespec'\n";
+
+      die "'$comma' should be ',' in revision range in '$filespec'\n"
+	 if defined $comma && $comma ne ',' ;
+
+      if ( ! defined $min ) {
+	 $min = 1 ;
+	 $max = '#head' ;
+      }
+
+      if ( ! defined $max ) {
+	 $max = $min ;
+      }
+      elsif ( lc( $max ) eq '#head' ) {
+	 $self->p4( [qw( counter change )], \$max ) ;
+	 chomp $max ;
+      }
+
+      if ( $min < 0 ) {
+	 $min = $max + $min ;
+      }
+
+      $self->repo_filespec( $name ) ;
+      $self->min( $min ) ;
+      $self->max( $max ) ;
+   }
+
+   return $parsed_spec ;
+}
+
+
+=item init_p4_view
+
+   $self->init_p4_view
+
+Borrows or creates a client with the right view.  Only called from
+VCP::Dest::p4, since VCP::Source::p4 uses non-view oriented commands.
+
+=cut
+
+sub init_p4_view {
+   my $self = shift ;
+
+   my $client = $self->repo_client ;
+
+   $self->repo_client( undef ) ;
    my $client_exists = grep $_ eq $client, $self->p4_clients ;
    debug "p4: client '$client' exists" if $client_exists && debugging $self ;
+   $self->repo_client( $client ) ;
 
    my $client_spec = $self->p4_get_client_spec ;
-
    $self->queue_p4_restore_client_spec( $client_exists ? $client_spec : undef );
 
-   my $p4_spec = $parsed_spec->{FILES} ;
+   my $p4_spec = $self->repo_filespec ;
    $p4_spec =~ s{(/(\.\.\.)?)?$}{/...} ;
    my $work_dir = $self->work_root ;
 
    $client_spec =~ s(^Root.*)(Root:\t$work_dir)m ;
    $client_spec =~ s(^View.*)(View:\n\t$p4_spec\t//$client/...\n)ms ;
 
-   $self->p4_set_client_spec( $client_spec ) ;
-
    debug "p4: using client spec", $client_spec if debugging $self ;
 
-   return $parsed_spec ;
+   $self->p4_set_client_spec( $client_spec ) ;
+
 }
 
 =item p4_clients
@@ -176,7 +234,10 @@ END {
 	 $object->p4_set_client_spec( $spec ) ;
       }
       else {
-         $object->p4( [ "client", "-d", $object->repo_client ] ) ;
+         my $out ;
+         $object->p4( [ "client", "-d", $object->repo_client ], ">", \$out ) ;
+	 die "vcp: unexpected stdout from p4:\np4: ", $out
+	    unless $out =~ /^Client\s.*\sdeleted.$/ ;
       }
       $object->repo_client( $tmp_name ) ;
       $_ = undef ;
@@ -203,7 +264,13 @@ Writes a client spec to the repository.
 sub p4_set_client_spec {
    my $self = shift ;
    my ( $client_spec ) = @_ ;
-   $self->p4( [ "client", "-i" ], "<", \$client_spec ) ;
+
+   ## Capture stdout so it doesn't leak.
+   my $out ;
+   $self->p4( [ "client", "-i" ], "<", \$client_spec, ">", \$out ) ;
+
+   die "vcp: unexpected stdout from p4:\np4: ", $out
+      unless $out =~ /^Client\s.*\ssaved.$/ ;
 }
 
 

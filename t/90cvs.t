@@ -15,8 +15,6 @@ use IPC::Run qw( run ) ;
 use Test ;
 use VCP::TestUtils ;
 
-my $cwd = cwd ;
-
 my @vcp = vcp_cmd ;
 
 my $t = -d 't' ? 't/' : '' ;
@@ -53,15 +51,9 @@ sub {
 
       ok 1 ;
 
-      chdir $cvs_options->{work} or die "$!: '$cvs_options->{work}'" ;
-      run [qw( cvs -d ), $cvs_options->{repo}, "checkout", $module], \undef
-	 or die $! ;
-
       my $out ;
       run [ @vcp, $cvs_spec, qw( -r 1.1: ) ], \undef, \$out
          or die "`vcp $cvs_spec -r 1.1:` returned $?" ;
-
-      chdir $cwd or die "$!: '$cwd'" ;
 
       my $in = slurp $infile ;
 
@@ -78,25 +70,14 @@ sub {
 ##
 ## cvs->revml, re-rooting a dir tree
 ##
-sub {},  ## Mult. ok()s in next sub{}.
-
 sub {
    eval {
       ## Hide global $cvs_spec for the nonce
       my $cvs_spec = "cvs:$cvs_options->{repo}:$module/a/deeply/..." ;
 
-      ## Gotta use a working directory with a checked-out version
-      chdir $cvs_options->{work} or die $! . ": '$cvs_options->{work}'" ;
-      run [qw( cvs -d ), $cvs_options->{repo}, "checkout", $module], \undef
-	 or die $! ;
-
-      ok 1 ;
-
       my $out ;
       run [ @vcp, $cvs_spec, qw( -r 1.1: ) ], \undef, \$out
          or die "`vcp $cvs_spec -r 1.1:` returned $?" ;
-
-      chdir $cwd or die $! ;
 
       my $infile  = $t . "test-cvs-in-0.revml" ;
       my $in = slurp $infile ;
@@ -136,8 +117,6 @@ sub {
    ok 1 ;
 },
 
-sub {},  ## Mult. ok()s in next sub{}.
-
 sub {
    if ( $p4d_borken ) {
       skip( $p4d_borken, 1, 1, $p4d_borken ) ;
@@ -149,17 +128,8 @@ sub {
 
    my $infile  = $t . "test-cvs-in-0.revml" ;
    eval {
-      ## Gotta use a working directory with a checked-out version
-      chdir $cvs_options->{work} or die $! . ": '$cvs_options->{work}'" ;
-      run [qw( cvs -d ), $cvs_options->{repo}, "checkout", $module], \undef
-	 or die $! ;
-
-      ok 1 ;
-
       run [ @vcp, $cvs_spec, qw( -r 1.1: ), "$p4_spec/..." ], \undef
          or die "`vcp $cvs_spec -r 1.1:` returned $?" ;
-
-      chdir $cwd or die $! ;
 
       my $out ;
       run [ @vcp, "$p4_spec/..." ], \undef, \$out ;
@@ -190,8 +160,6 @@ sub { skip( ! defined $max_change_id, $max_change_id, 3, "Max change_id in cvs->
 ##
 ## cvs->p4->revml, re-rooting a dir tree
 ##
-sub {},  ## Mult. ok()s in next sub{}.
-
 sub {
    if ( $p4d_borken ) {
       skip( $p4d_borken, 1, 1, $p4d_borken ) ;
@@ -204,17 +172,8 @@ sub {
 
    my $p4_spec = "p4:$p4_options->{user}:\@$p4_options->{port}://depot/new/..." ;
    eval {
-      ## Gotta use a working directory with a checked-out version
-      chdir $cvs_options->{work} or die $! . ": '$cvs_options->{work}'" ;
-      run [qw( cvs -d ), $cvs_options->{repo}, "checkout", $module], \undef
-	 or die $! ;
-
-      ok 1 ;
-
       run [ @vcp, $cvs_spec, qw( -r 1.1: ), $p4_spec ], \undef
          or die "`vcp $cvs_spec -r 1.1:` returned $?" ;
-
-      chdir $cwd or die $! ;
 
       my $out ;
       run [ @vcp, $p4_spec ], \undef, \$out ;
@@ -259,17 +218,9 @@ sub {
 
       ok 1 ;
 
-      ## Gotta use a working directory with a checked-out version
-      chdir $cvs_options->{work} or die $! . ": '$cvs_options->{work}'" ;
-      run [qw( cvs -d ), $cvs_options->{repo}, "checkout", $module],
-         \undef, \*STDERR, \*STDERR
-	 or die $! ;
-
       my $out ;
       run [ @vcp, $cvs_spec, qw( -r ch_4: ) ], \undef, \$out
          or die "`vcp $cvs_spec -r ch_4:` returned $?" ;
-
-      chdir $cwd or die $! ;
 
       my $in = slurp $infile ;
 
@@ -286,24 +237,12 @@ sub {
 ##
 ## Idempotency test, bootstrapping the second set of changes
 ##
-sub {},  ## Mult. ok()s in next sub{}.
-
 sub {
    my $infile  = $t . "test-cvs-in-1-bootstrap.revml" ;
    eval {
-      ## Gotta use a working directory with a checked-out version
-      chdir $cvs_options->{work} or die $! . ": '$cvs_options->{work}'" ;
-      run [qw( cvs -d ), $cvs_options->{repo}, "checkout", $module],
-         \undef, \*STDERR, \*STDERR
-	 or die $! ;
-
-      ok 1 ;
-
       my $out ;
       run [ @vcp, $cvs_spec, qw( -r ch_4: --bootstrap=** ) ], \undef, \$out
          or die "`vcp $cvs_spec -r ch_4:` returned $?" ;
-
-      chdir $cwd ;
 
       my $in = slurp $infile ;
 

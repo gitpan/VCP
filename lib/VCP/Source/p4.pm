@@ -104,12 +104,11 @@ use Fcntl qw( O_WRONLY O_CREAT ) ;
 use VCP::Debug ":debug" ;
 use Regexp::Shellish qw( :all ) ;
 use VCP::Rev ;
-use VCP::Source ;
 use IPC::Run qw( run io timeout new_chunker ) ;
 
-use base 'VCP::Source' ;
+use base qw( VCP::Source VCP::Utils::p4 ) ;
 use fields (
-   'P4_FILESPEC',       ## What revs of what files to get.  ARRAY ref.
+   'P4_REPO_CLIENT',    ## Set by p4_parse_repo_spec in VCP::Utils::p4
    'P4_INFO',           ## Results of the 'p4 info' command
    'P4_LABEL_CACHE',    ## ->{$name}->{$rev} is a list of labels for that rev
 #   'P4_LABELS',         ## Array of labels from 'p4 labels'
@@ -130,14 +129,10 @@ sub new {
 
    my VCP::Source::p4 $self = $class->SUPER::new( @_ ) ;
 
-   ## Make sure the p4 command is available
-   $self->command( 'p4' ) ;
-
    ## Parse the options
    my ( $spec, $options ) = @_ ;
 
-   my $parsed_spec = $self->parse_repo_spec( $spec ) ;
-   my $files = $parsed_spec->{FILES} ;
+   $self->parse_p4_repo_spec( $spec ) ;
 
    my $rev_root ;
 
@@ -152,38 +147,8 @@ sub new {
       'r|rev-root'      => \$rev_root,
       ) or $self->usage_and_exit ;
 
-   ## If a change range was specified, we need to list the files in
-   ## each change.  p4 doesn't allow an @ range in the filelog command,
-   ## for wataver reason, so we must parse it ourselves and call lots
-   ## of filelog commands.  Even if it did, we need to chunk the list
-   ## so that we don't consume too much memory or need a temporary file
-   ## to contain one line per revision per file for an entire large
-   ## repo.
-   my ( $name, $min, $comma, $max ) ;
-   ( $name, $min, $comma, $max ) =
-      $files =~ m/^([^@]*)(?:@(-?\d+)(?:(\D|\.\.)((?:\d+|#head)))?)?$/i
-      or die "Unable to parse p4 filespec '$files'\n";
 
-   die "'$comma' should be ',' in revision range in '$files'\n"
-      if defined $comma && $comma ne ',' ;
-
-   if ( ! defined $min ) {
-      $min = 1 ;
-      $max = '#head' ;
-   }
-
-   if ( ! defined $max ) {
-      $max = $min ;
-   }
-   elsif ( lc( $max ) eq '#head' ) {
-      $self->p4( [qw( counter change )], \$max ) ;
-      chomp $max ;
-   }
-
-   if ( $min < 0 ) {
-      $min = $max + $min ;
-   }
-
+   my $name = $self->repo_filespec ;
    unless ( defined $rev_root ) {
       if ( length $name >= 2 && substr( $name, 0, 2 ) ne '//' ) {
          ## No depot on the command line, default it to the only depot
@@ -192,7 +157,7 @@ sub new {
 	 $self->p4( ['depots'], \$depots ) ;
 	 $depots = 'depot' unless length $depots ;
 	 my @depots = split( /^/m, $depots ) ;
-	 die "vcp: p4 has more than one depot, specify one as source\n"
+	 die "vcp: p4 has more than one depot, can't assume //depot/...\n"
 	    if @depots > 1 ;
 	 debug "vcp: defaulting depot to '$depots[0]'" if debugging $self ;
 	 $name = join( '/', '/', $depots[0], $name ) ;
@@ -201,45 +166,16 @@ sub new {
    }
    else {
       $self->rev_root( $rev_root ) ;
-      $name = join( '/', $rev_root, $name ) ;
    }
 
    die "no depot name specified for p4 source '$name'\n"
       unless $name =~ m{^//[^/]+/} ;
-
-   ## Don't normalize the filespec.
-   $self->filespec( $name ) ;
-
-   $self->min( $min ) ;
-   $self->max( $max ) ;
+   $self->repo_filespec( $name ) ;
 
    $self->load_p4_info ;
    $self->load_p4_labels ;
 
    return $self ;
-}
-
-
-sub p4 {
-   my VCP::Source::p4 $self = shift ;
-
-   local $ENV{P4PASSWD} = $self->repo_password
-      if defined $self->repo_password ;
-
-   unshift @{$_[0]}, '-p', $self->repo_server
-      if defined $self->repo_server ;
-
-   if ( defined $self->repo_user ) {
-      my ( $user, $client ) = $self->repo_user =~ m/([^()]*)(?:\((.*)\))?/ ;
-      unshift @{$_[0]}, '-c', $client if defined $client ;
-      unshift @{$_[0]}, '-u', $user ;
-   }
-
-   my $tmp = $ENV{PWD} ;
-   delete $ENV{PWD} ;
-
-   $self->SUPER::p4( @_ ) ;
-   $ENV{PWD} = $tmp if defined $tmp ;
 }
 
 
@@ -330,7 +266,7 @@ sub scan_filelog {
 
    my $delta = $last_change_id - $first_change_id + 1 ;
 
-   my $spec =  join( '', $self->filespec . '@' . $last_change_id ) ;
+   my $spec =  join( '', $self->repo_filespec . '@' . $last_change_id ) ;
    my $temp_f = $self->command_stderr_filter ;
    $self->command_stderr_filter(
        qr{//\S* - no file\(s\) at that changelist number\.\s*\n}
@@ -486,13 +422,6 @@ sub scan_filelog {
 	 }
       }
    }
-}
-
-
-sub filespec {
-   my VCP::Source::p4 $self = shift ;
-   $self->{P4_FILESPEC} = shift if @_ ;
-   return $self->{P4_FILESPEC} ;
 }
 
 

@@ -34,12 +34,10 @@ use File::Basename ;
 use File::Path ;
 use Getopt::Long ;
 use VCP::Debug ':debug' ;
-use VCP::Dest ;
 use VCP::Rev ;
 
-use base 'VCP::Dest' ;
+use base qw( VCP::Dest VCP::Utils::cvs ) ;
 use fields (
-   'CVS_CVSROOT',    ## What to pass using -d.
    'CVS_CHANGE_ID',  ## The current change_id in the rev_meta sequence, if any
    'CVS_LAST_MOD_TIME',  ## A HASH keyed on working files of the mod_times of
                      ## the previous revisions of those files.  This is used
@@ -65,26 +63,13 @@ sub new {
    ## Parse the options
    my ( $spec, $options ) = @_ ;
 
-   my $parsed_spec = $self->parse_repo_spec( $spec ) ;
-   my $files = $parsed_spec->{FILES} ;
-
-   $self->cvsroot( $parsed_spec->{SERVER} ) ;
+   $self->parse_repo_spec( $spec ) ;
+   $self->deduce_rev_root( $self->repo_filespec ) ;
 
    my $rev_root ;
-   GetOptions(
-      'r|rev-root' => \$rev_root,
-   ) or $self->usage_and_exit ;
+   GetOptions( 'NoBloOdyOptTionsWanTErRoRMesSaGe' => \"" )
+      or $self->usage_and_exit ;
 
-   if ( defined $rev_root ) {
-      $self->rev_root( $rev_root ) ;
-   }
-   elsif ( defined $files && length $files ) {
-      $self->deduce_rev_root( $files ) ;
-   }
-
-   ## Make sure the cvs command is available
-   $self->command( 'cvs', '-Q', '-z9' ) ;
-   $self->mkdir( $self->work_path ) ;
    $self->command_stderr_filter(
       qr{^(?:cvs (?:server|add|remove): (re-adding|use 'cvs commit' to).*)\n}
    ) ;
@@ -93,27 +78,12 @@ sub new {
 }
 
 
-sub create_workspace {
-   my VCP::Dest::cvs $self = shift ;
-
-   confess "Can't create_workspace twice" unless $self->none_seen ;
-
-   ## establish_workspace
-   $self->rev_root( $self->header->{rev_root} )
-      unless defined $self->rev_root ;
-   $self->command_chdir( $self->work_path ) ;
-   $self->cvs( [ 'checkout', $self->rev_root ] ) ;
-   $self->work_root( $self->work_path( $self->rev_root ) ) ;
-   $self->command_chdir( $self->work_path ) ;
-}
-
-
 sub backfill {
    my VCP::Dest::cvs $self = shift ;
    my VCP::Rev $r ;
    ( $r ) = @_ ;
 
-   $self->create_workspace if $self->none_seen ;
+   $self->create_cvs_workspace if $self->none_seen ;
 
    #my $fn = join( '', $self->rev_root, "/", $r->name ) ;
    my $fn = $r->name ;
@@ -152,36 +122,16 @@ sub backfill {
 }
 
 
-sub cvs {
-   my VCP::Dest::cvs $self = shift ;
-
-   unshift @{$_[0]}, $self->cvsroot_cvs_option ;
-
-   return $self->SUPER::cvs( @_ ) ;
-}
-
-
-sub cvsroot {
-   my VCP::Dest::cvs $self = shift ;
-   $self->{CVS_CVSROOT} = shift if @_ ;
-   return $self->{CVS_CVSROOT} ;
-}
-
-
-sub cvsroot_cvs_option {
-   my VCP::Dest::cvs $self = shift ;
-   return defined $self->cvsroot ? "-d" . $self->cvsroot : (),
-}
-
-
-
 sub handle_rev {
    my VCP::Dest::cvs $self = shift ;
 
    my VCP::Rev $r ;
    ( $r ) = @_ ;
 
-   $self->create_workspace if $self->none_seen ;
+   $self->rev_root( $self->header->{rev_root} )
+      unless defined $self->rev_root ;
+
+   $self->create_cvs_workspace if $self->none_seen ;
    
    my VCP::Rev $saw = $self->seen( $r ) ;
 
@@ -206,8 +156,7 @@ sub handle_rev {
 	       ## Warn: MacOS danger here: "" is like Unix's "..".  Shouldn't
 	       ## ever be a problem, we hope.
 	       if ( length $base_dir && ! -d $base_dir ) {
-	          mkdir $base_dir, 0770 or die "vcp: $! making '$base_dir'" ;
-		  debug "vcp: mkdired '$base_dir' 0770" if debugging $self ;
+	          $self->mkdir( $base_dir ) ;
 		  $self->cvs( ["add", $base_dir] ) ;
 	       }
 	       $this_dir = shift @dirs  ;

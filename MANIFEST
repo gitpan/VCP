@@ -27,6 +27,7 @@ lib/VCP/Source/cvs.pm
 lib/VCP/Source/p4.pm
 lib/VCP/Source/revml.pm
 lib/VCP/TestUtils.pm
+lib/VCP/Utils/cvs.pm
 lib/VCP/Utils/p4.pm
 revml.dtd
 t/00plugin.t

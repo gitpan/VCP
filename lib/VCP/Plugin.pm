@@ -37,15 +37,17 @@ $debug = 0 ;
 
 use fields (
    'WORK_ROOT',     ## The root of the export work area.
-   'COMMAND',       ## The full path to the command-line.
    'COMMAND_CHDIR', ## Where to chdir to when running COMMAND
    'COMMAND_STDERR_FILTER', ## How to modify the stderr when running a command
    'COMMAND_OK_RESULT_CODES', ## HASH keyed on acceptable COMMAND return vals
    'REV_ROOT',
    'SEEN',          ## HASH of previosly seen filename/revisions.
+   'REPO_SCHEME',   ## The scheme (this is usually superfluous, since new() has
+                    ## already been called on the correct class).
    'REPO_USER',     ## The user name to log in to the repository with, if any
    'REPO_PASSWORD', ## The password to log in to the repository with, if any
    'REPO_SERVER',   ## The repository to connect to
+   'REPO_FILESPEC', ## The filespec to get/store
 ) ;
 
 
@@ -69,15 +71,14 @@ sub new {
       $self = bless [ \%{"$class\::FIELDS"} ], $class ;
    }
 
-   my $plugin_dir = ref $self ;
-   $plugin_dir =~ tr/A-Z/a-z/ ;
-   $plugin_dir =~ s/^VCP:://i ;
-   $plugin_dir =~ s/::/-/g ;
-   $self->work_root( File::Spec->tmpdir, "vcp$$", $plugin_dir ) ;
+   $self->work_root( $self->tmp_dir ) ;
    rmtree $self->work_root if -e $self->work_root ;
+
    $self->{SEEN} = {} ;
 
    $self->{COMMAND_OK_RESULT_CODES} = { 0 => undef } ;
+
+   $self->command_chdir( $self->work_path ) ;
 
    return $self ;
 }
@@ -170,30 +171,27 @@ sub none_seen {
 
 This splits a repository spec in one of the following formats:
 
-   scheme:user:passwd@server:file_spec
-   scheme:user@server:file_spec
-   scheme::passwd@server:file_spec
-   scheme:server:file_spec
-   scheme:file_spec
+   scheme:user:passwd@server:filespec
+   scheme:user@server:filespec
+   scheme::passwd@server:filespec
+   scheme:server:filespec
+   scheme:filespec
 
-in to a HASH reference like
+in to the indicated fields, which are stored in $self and may be
+accessed and altered using L</repo_scheme>, L</repo_user>, L</repo_password>,
+L</repo_server>, and L</repo_filespec>. Some sources and destinations may
+add additional fields. The p4 drivers create an L<VCP::Utils::p4/repo_client>,
+for instance, and parse the repo_user field to fill it in.  See
+L<VCP::Utils::p4/parse_p4_repo_spec> for details.
 
-   $hash = {
-      SCHEME    => 'scheme',
-      USER      => 'user',
-      PASSWORD  => 'password',
-      SERVER    => 'server',
-      FILES     => 'file_spec',
-   } ;
-
-.  The spec is parsed from the edges in in this order:
+The spec is parsed from the ends towars the middle in this order:
 
    1. SCHEME (up to first ':')
-   2. FILES  (after last ':')
+   2. FILESPEC  (after last ':')
    3. USER, PASSWORD (before first '@')
-   4. SERVER (everything left.
+   4. SERVER (everything left).
 
-This approach allows the FILES string to contain '@', and the SERVER
+This approach allows the FILESPEC string to contain '@', and the SERVER
 string to contain ':' and '@'.  USER can contain ':'.  Funky, but this
 works well, at least for cvs and p4.
 
@@ -219,9 +217,11 @@ sub parse_repo_spec {
    for ( $spec ) {
       return $result unless s/^([^:]*)(?::|$)// ;
       $result->{SCHEME} = $1 ;
+      $self->repo_scheme( $1 ) ;
 
       return $result unless s/(?:^|:)([^:]*)$// ;
       $result->{FILES} = $1 ;
+      $self->repo_filespec( $1 ) ;
 
       if ( s/^([^\@]*?)(?::([^\@:]*))?@// ) {
          if ( defined $1 ) {
@@ -240,6 +240,8 @@ sub parse_repo_spec {
       $self->repo_server( $spec ) ;
    }
 
+   ## TODO: Return nothing.  Callers need to come to use the
+   ## accessors.
    return $result
 }
 
@@ -255,7 +257,6 @@ Requires Pod::Usage when called.
 
 =cut
 
-## TODO: Move to VCP::Plugin
 sub usage_and_exit {
    my VCP::Plugin $self = shift ;
 
@@ -277,6 +278,23 @@ sub usage_and_exit {
    }
 
    die "can't locate '$f' to print usage.\n" ;
+}
+
+
+=item tmp_dir
+
+Returns the temporary directory this plugin should use, usually something
+like "/tmp/vcp123/dest-p4".
+
+=cut
+
+sub tmp_dir {
+   my VCP::Plugin $self = shift ;
+   my $plugin_dir = ref $self ;
+   $plugin_dir =~ tr/A-Z/a-z/ ;
+   $plugin_dir =~ s/^VCP:://i ;
+   $plugin_dir =~ s/::/-/g ;
+   return File::Spec->catdir( File::Spec->tmpdir, "vcp$$", $plugin_dir, @_ ) ;
 }
 
 
@@ -341,7 +359,8 @@ sub mkdir {
 
    unless ( -d $path ) {
       debug "vcp: mkdir $path, ", sprintf "%04o", $mode if debugging $self ;
-      mkpath( $path, 0, $mode ) ;
+      mkpath [ $path ], 0, $mode
+         or die "vcp: failed to create $path with mode $mode\n" ;
    }
 
    return ;
@@ -450,85 +469,6 @@ sub work_root {
 }
 
 
-=item command
-
-DEPRECATED.  Replaced by VCP::Utils::foo.
-
-   $self->command( 'p4' ) ;
-   $self->command( 'cvs' ) ;
-
-   $path_to_command = $self->command ;
-
-This sets the name of the primary command name that is to be
-used.  A search of the PATH environment variable is then done if 
-the path is relative to see if the command can be found.
-
-This method croaks if the command can not be found.
-
-This is usually called by new().
-
-Once this is set, the command may be executed by doing something like
-
-   $self->p4( [qw( counters )], \$out )
-      or die "Process failed".
-
-, which runs a 'p4 counters' and pipes the output in to the \$out
-variable.
-
-See L<IPC::Run> for details on the additional parameters after
-the command.
-
-=cut
-
-sub _cmd_not_found {
-   my ( $cmd, $msg, @path ) = @_ ;
-   
-   croak "'$cmd' $msg",
-      @path
-         ? ", searched in " . join( ", ", map "'$_'", @path )
-	 : () ;
-}
-
-sub command {
-   my VCP::Plugin $self = shift ;
-
-   if ( @_ ) {
-      my ( $cmd, @args ) = @_ ;
-      my @path ;
-      unless ( File::Spec->file_name_is_absolute( $cmd ) ) {
-         ## TODO: Port this to other OSs
-	 for ( $^O ) {
-	    if ( /Win/ ) {
-	       @path = split( /;/, $ENV{PATH} ) ;
-	    }
-	    else {
-	       @path = split( /:/, $ENV{PATH} ) ;
-	    }
-	 }
-
-	 for ( @path ) {
-	    my $candidate = File::Spec->catfile( $_, $cmd ) ;
-	    if ( -f $candidate && -x $_ ) {
-	       $cmd = $candidate ;
-	       last ;
-	    }
-	 }
-      }
-
-      _cmd_not_found( $cmd, 'not found',      @path )   unless -e $cmd ;
-      _cmd_not_found( $cmd, 'is a directory', @path )   if     -d _ ;
-      _cmd_not_found( $cmd, 'not a file',     @path )   unless -f _ ;
-      _cmd_not_found( $cmd, 'not executable', @path )   unless -x _ ;
-
-      @{$self->{COMMAND}} = ( $cmd, @args ) ;
-   }
-
-   Carp::confess "No command defined" unless defined $self->{COMMAND} ;
-
-   return @{$self->{COMMAND}} ;
-}
-
-
 =item command_chdir
 
 Sets/gets the directory to chdir into before running the default command.
@@ -592,6 +532,26 @@ sub command_ok_result_codes {
 }
 
 
+=item repo_scheme
+
+   $self->repo_scheme( $scheme_name ) ;
+   $scheme_name = $self->repo_scheme ;
+
+Sets/gets the scheme specified ("cvs", "p4", "revml", etc). This is normally
+superfluous, since the scheme name is peeked at in order to load the
+correct VCP::{Source,Dest}::* class, which then calls this.
+
+This is usually set automatically by L</parse_repo_spec>.
+
+=cut
+
+sub repo_scheme {
+   my VCP::Plugin $self = shift ;
+   $self->{REPO_SCHEME} = $_[0] if @_ ;
+   return $self->{REPO_SCHEME} ;
+}
+
+
 =item repo_user
 
    $self->repo_user( $user_name ) ;
@@ -646,6 +606,24 @@ sub repo_server {
    my VCP::Plugin $self = shift ;
    $self->{REPO_SERVER} = $_[0] if @_ ;
    return $self->{REPO_SERVER} ;
+}
+
+
+=item repo_filespec
+
+   $self->repo_filespec( $filespec ) ;
+   $filespec = $self->repo_filespec ;
+
+Sets/gets the filespec.
+
+This is usually set automatically by L</parse_repo_spec>.
+
+=cut
+
+sub repo_filespec {
+   my VCP::Plugin $self = shift ;
+   $self->{REPO_FILESPEC} = $_[0] if @_ ;
+   return $self->{REPO_FILESPEC} ;
 }
 
 
@@ -829,17 +807,22 @@ sub run_safely {
          ?  $self->{COMMAND_CHDIR}
 	 : "undef"
       if debugging $self, join( '::', ref $self, $cmd->[0] ) ;
+
+   my @init_sub ;
+
+   if ( defined $self->command_chdir ) {
+      $self->mkdir( $self->command_chdir )
+	 unless -e $self->command_chdir ;
+
+      @init_sub = (
+         init => sub {
+	    chdir $self->command_chdir
+	       or die "$! chdiring to ", $self->command_chdir
+	 }
+      ) ;
+   }
    
-   my $h = IPC::Run::harness(
-      $cmd,
-      @redirs,
-      defined $self->{COMMAND_CHDIR}
-         ? ( init => sub {
-	    chdir $self->{COMMAND_CHDIR}
-	       or die "$! chdiring to $self->{COMMAND_CHDIR}"
-	    } )
-	 : (),
-   ) ;
+   my $h = IPC::Run::harness( $cmd, @redirs, @init_sub ) ;
    $h->run ;
 
    my @errors ;
@@ -890,37 +873,6 @@ sub run_safely {
 
    Carp::cluck "Result of `", join( ' ', @$cmd ), "` checked"
       if defined wantarray ;
-}
-
-
-use vars qw( $AUTOLOAD ) ;
-
-## AUTOLOADed methods are a touch slower than normal perl methods, but you're
-## about to fork, so it doesn't matter.
-
-## DEPRECATED: VCP::Utils::foo modules are taking over this function, since
-## there are often environment and command line options that always need to
-## be passed.
-
-sub AUTOLOAD {
-   my ( $package, $fun ) = $AUTOLOAD =~ m/(.*)::(.*)/g ;
-
-   my VCP::Plugin $self = shift ;
-
-   confess "Can only autoload $package member functions"
-      unless isa( $self, __PACKAGE__ ) ;
-
-   confess "Can't AUTOLOAD '$AUTOLOAD' until a command is defined"
-      unless defined $self->{COMMAND} ;
-
-   my $cmd = basename( $self->command ) ;
-
-   confess "Can only AUTOLOAD '$cmd', not '$fun'"
-      unless $fun eq $cmd ;
-
-   my $args = shift ;
-   $self->run_safely( [ $self->command, @$args ], @_ ) ;
-   return ;
 }
 
 
