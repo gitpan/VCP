@@ -44,9 +44,13 @@ use VCP::Rev ;
 use base 'VCP::Dest' ;
 use fields (
    'P4_SPEC',       ## The root of the tree to update
-   'P4_CHANGE_ID',  ## The current change_id in the r sequence, if any
    'P4_PENDING',    ## Revs pending the next submit
+   'P4_DELETES_PENDING',    ## At least one 'delete' needs to be submitted.
    'P4_WORK_DIR',   ## Where to do the work.
+
+   ## members for change number divining:
+   'P4_PREV_CHANGE_ID',  ## The change_id in the r sequence, if any
+   'P4_PREV_COMMENT',    ## Used to detect change boundaries
 ) ;
 
 =item new
@@ -176,12 +180,29 @@ debug "vcp: handle_rev got $r ", $r->name if debugging $self ;
          unless defined $self->rev_root ;
    }
 
-   if ( defined $r->change_id
-      && defined $self->{P4_CHANGE_ID}
-      && $r->change_id ne $self->{P4_CHANGE_ID}
+   if ( 
+      ( @{$self->{P4_PENDING}} || $self->{P4_DELETES_PENDING} )
+      && (
+	 (
+	    defined $r->change_id && defined $self->{P4_PREV_CHANGE_ID}
+	    &&      $r->change_id ne         $self->{P4_PREV_CHANGE_ID}
+	    && ( debugging( $self ) ? debug "vcp: change_id changed" : 1 )
+	 )
+	 || (
+	    defined $r->comment && defined $self->{P4_PREV_COMMENT}
+	    &&      $r->comment ne         $self->{P4_PREV_COMMENT}
+	    && ( debugging( $self ) ? debug "vcp: comment changed" : 1 )
+	 )
+	 || (
+	    grep( $r->name eq $_->name, @{$self->{P4_PENDING}} )
+	    && ( debugging( $self ) ? debug "vcp: name repeated" : 1 )
+	 )
+      )
    ) {
       $self->submit ;
    }
+
+
    
    my VCP::Rev $saw = $self->seen( $r ) ;
 
@@ -195,6 +216,7 @@ debug "vcp: handle_rev got $r ", $r->name if debugging $self ;
    if ( $r->action eq 'delete' ) {
       unlink $work_path || die "$! unlinking $work_path" ;
       $self->p4( ['delete', $fn] ) ;
+      $self->{P4_DELETES_PENDING} = 1 ;
    }
    else {
    ## TODO: Don't assume same filesystem or working link().
@@ -244,18 +266,18 @@ debug "vcp: saving off $r ", $r->name, " in PENDING" if debugging $self ;
       push @{$self->{P4_PENDING}}, $r ;
    }
 
-   ## TODO: Don't assume all revs either do or do not have a change id.
-   $self->submit unless defined $r->change_id ;
-   $self->{P4_CHANGE_ID} = $r->change_id ;
+   $self->{P4_PREV_CHANGE_ID} = $r->change_id ;
 debug "vcp: done importing '$fn'" if debugging $self ;
 debug "vcp: cleaning up $saw ", $saw->name, " in PENDING" if $saw && debugging $self ;
+
+   $self->{P4_PREV_COMMENT} = $r->comment ;
 }
 
 
 sub handle_footer {
    my VCP::Dest::p4 $self = shift ;
 
-   $self->submit unless $self->none_seen ;
+   $self->submit if @{$self->{P4_PENDING}} || $self->{P4_DELETES_PENDING} ;
    $self->SUPER::handle_footer ;
 }
 
@@ -266,29 +288,36 @@ sub submit {
    my %pending_labels ;
    my %comments ;
    my $max_time ;
-   for my $r ( @{$self->{P4_PENDING}} ) {
-      $comments{$r->comment} = $r->name if defined $r->comment ;
-      $max_time = $r->time if ! defined $max_time || $r->time > $max_time ;
-      for my $l ( $r->labels ) {
-	 push @{$pending_labels{$l}}, $r->name ;
-      }
-   }
-   my @f = reverse( (localtime $max_time)[0..5] ) ;
-   $f[0] += 1900 ;
-   ++$f[1] ; ## Day of month needs to be 1..12
-   $max_time = sprintf "%04d/%02d/%02d %02d:%02d:%02d", @f ;
 
-   my $change ;
-   $self->p4( [ 'change', '-o' ], \$change ) ;
+   if ( @{$self->{P4_PENDING}} ) {
+      for my $r ( @{$self->{P4_PENDING}} ) {
+	 $comments{$r->comment} = $r->name if defined $r->comment ;
+	 $max_time = $r->time if ! defined $max_time || $r->time > $max_time ;
+	 for my $l ( $r->labels ) {
+	    push @{$pending_labels{$l}}, $r->name ;
+	 }
+      }
+
+      my @f = reverse( (localtime $max_time)[0..5] ) ;
+      $f[0] += 1900 ;
+      ++$f[1] ; ## Day of month needs to be 1..12
+      $max_time = sprintf "%04d/%02d/%02d %02d:%02d:%02d", @f ;
+   }
+
    my $description = join( "\n", keys %comments ) ;
    if ( length $description ) {
       $description =~ s/^/\t/gm ;
       $description .= "\n" if substr $description, -1 eq "\n" ;
    }
 
-   $change =~ s/^Date:.*\r?\n\r/Date:\t$max_time\n/m
-      or $change =~ s/(^Client:)/Date:\t$max_time\n\n$1/m
-      or die "vcp: Couldn't modify change date\n$change" ;
+   my $change ;
+   $self->p4( [ 'change', '-o' ], \$change ) ;
+
+   if ( defined $max_time ) {
+      $change =~ s/^Date:.*\r?\n\r/Date:\t$max_time\n/m
+	 or $change =~ s/(^Client:)/Date:\t$max_time\n\n$1/m
+	 or die "vcp: Couldn't modify change date\n$change" ;
+   }
 
    $change =~ s/^Description:.*\r?\n\r?.*/Description:\n$description/m
       or die "vcp: Couldn't modify change description\n$change" ;
@@ -308,6 +337,7 @@ sub submit {
       $self->p4( [qw( labelsync -a -l ), $l, @{$pending_labels{$l}}] ) ;
    }
    @{$self->{P4_PENDING}} = () ;
+   $self->{P4_DELETES_PENDING} = undef ;
 }
 
 sub tag {

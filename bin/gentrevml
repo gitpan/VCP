@@ -137,7 +137,9 @@ my @changes ;
 	    content => $content,
 	    time    => "2000-01-01 12:00:${counter}Z",
 	    ## In p4, all files in a change number have an identical comment.
-	    comment => "foo" . ( $which eq 'p4' ? $change_num : $counter ) . "\n",
+	    ## We impose this on the other solutions to test foo->p4 change
+	    ## number aggregation.
+	    comment => "foo$change_num\n",
 	 } ;
 
 	 ## p4 doesn't handle modtime until very recently, and then it

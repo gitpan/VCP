@@ -71,7 +71,7 @@ sub {
    eval {
       my $out ;
       ## $in and $out allow us to avoide execing diff most of the time.
-      run [ $perl, $vcp, "revml:$infile", $p4spec, '-w', $p4work ], \undef
+      run [ $perl, $vcp, "-d", "p4", "revml:$infile", $p4spec, '-w', $p4work ], \undef
 	 or die "`$vcp revml:$infile $p4spec` returned $?" ;
 
       run [ $perl, $vcp, "$p4spec..." ], \undef, \$out 
@@ -134,11 +134,10 @@ sub {
 },
 
 sub {
-   ## p4 -> cvs bootstrap (to -> revml when we get VCP::Source::cvs to check
-   ## cvs results)
+   ## p4 -> cvs bootstrap
    my $type = 'p4' ;
    my $infile  = $t . "test-$type-in-0.revml" ;
-   my $outfile  = $t . "test-$type-out-cvs-0.revml" ;
+   my $outfile  = $t . "test-$type-out-0-cvs.revml" ;
    my $infile_t = "test-$type-in-0-cvs-tweaked.revml" ;
    my $outfile_t = "test-$type-out-0-cvs-tweaked.revml" ;
    ##
@@ -155,7 +154,7 @@ sub {
 
       ## Gotta use a working directory with a checked-out version
       chdir $cvswork or die $! . ": '$cvswork'" ;
-      run [qw( cvs checkout ), $cvs_module], \undef, \*STDERR, \*STDERR
+      run [qw( cvs checkout ), $cvs_module], \undef, \*STDERR
 	 or die $! ;
 
       run( [ $vcp, "cvs:$cvs_module", qw( -r 1.1: ) ], \undef, \$out )
@@ -330,7 +329,7 @@ $out =~ s{<time>.*?</time>}{<time><!--deleted by p4.t--></time>}sg ;
 },
 
 ) ;
-plan tests => scalar( @tests ), todo => [4] ;
+plan tests => scalar @tests ;
 
 ##
 ## Build a repository and they will come...
@@ -341,8 +340,6 @@ my $why_skip ;
 $why_skip .= "# '$vcp' not found\n"    unless -x $vcp ;
 $why_skip .= "p4 command not found\n"  unless ( `p4 -V`  || 0 ) =~ /^Perforce/ ;
 $why_skip .= "p4d command not found\n" unless ( `p4d -V` || 0 ) =~ /^Perforce/ ;
-
-my $p4d_pid ;
 
 unless ( $why_skip ) {
    ## Give vcp ... p4:... a repository to work with.  Note that it does not
@@ -378,7 +375,7 @@ sub launch_p4d {
    ## Ok, this is wierd: we need to fork & run p4d in foreground mode so that
    ## we can capture it's PID and kill it later.  There doesn't seem to be
    ## the equivalent of a 'p4d.pid' file.
-   $p4d_pid = fork ;
+   my $p4d_pid = fork ;
    unless ( $p4d_pid ) {
       ## Ok, there's a tiny chance that this will fail due to a port
       ## collision.  Oh, well.

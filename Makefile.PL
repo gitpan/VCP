@@ -3,7 +3,7 @@ use ExtUtils::MakeMaker;
 use strict ;
 use vars qw( $VERSION ) ;
 
-$VERSION = 0.01 ;
+$VERSION = 0.02 ;
 
 my @programs = qw( vcp ) ;
 

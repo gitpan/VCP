@@ -8,10 +8,6 @@ VCP::Rev - VCP's concept of a revision
 
 =head1 DESCRIPTION
 
-There's also a DESTROY method that can be used to delete working
-files.  This way, hanging on to old VCP::Revs is a way to prevent the
-file from being deleted until you're done with it.
-
 =head1 METHODS
 
 =over
@@ -36,7 +32,7 @@ use fields (
    'TIME',       ## The commit/submit time, if available, as a simple number
    'MOD_TIME',   ## The last modification time, if available
    'USER_ID',    ## The submitter/commiter of the revision
-   'LABELS',     ## What tags/labels are assoc. with this rev.
+   'LABELS',     ## A HASH, keys are tags/labels assoc. with this rev.
    'COMMENT',    ## The comment/message for this rev.
    'ACTION',     ## What was done ('edit', 'move', 'delete', etc.)
    'BASE_REV_ID',
@@ -57,8 +53,11 @@ BEGIN {
 	 eval qq{
 	    sub $f {
 	       my VCP::Rev \$self = shift ;
-	       \@{\$self->{$_}} = \@_ if \@_ ;
-	       return \$self->{$_} ? \@{\$self->{$_}} : () ;
+	       if ( \@_ ) {
+	          \$self->{$_} = {} ;
+		  \@{\$self->{$_}}{\@_} = (undef) x \@_ ;
+	       }
+	       return \$self->{$_} ? sort keys \%{\$self->{$_}} : () ;
 	    }
 	 } ;
       }
@@ -126,7 +125,12 @@ sub new {
       $self->{uc($key)} = shift ;
    }
 
-   $self->{LABELS} = [] unless $self->{LABELS} ;
+   if ( $self->{LABELS} ) {
+      $self->labels( @{$self->{LABELS}} ) if ref $self->{LABELS} eq "ARRAY" ;
+   }
+   else {
+      $self->{LABELS} = {} unless $self->{LABELS} ;
+   }
 
    return $self ;
 }
@@ -203,9 +207,33 @@ sub dest_work_path {
 }
 
 
+=item labels
+
+   $r->labels( @labels ) ;
+   @labels = $r->labels ;
+
+Sets/gets labels associated with a revision.  If a label is applied multiple
+times, it will only be returned once.  This feature means that the automatic
+label generation code for r_... revision and ch_... change labels won't add
+additional copies of labels that were already applied to this revision in the
+source repository.
+
+Returns labels in an unpredictible order, which happens to be sorted for
+now.  This sorting is purely for logging purposes and may disappear at
+any moment.
+
+=item add_label
+
+  $r->add_label( $label ) ;
+  $r->add_label( @labels ) ;
+
+Marks one or more labels as being associated with this revision of a file.
+
+=cut
+
 sub add_label {
    my VCP::Rev $self = shift ;
-   push @{$self->{LABELS}}, @_ ;
+   @{$self->{LABELS}}{@_} = (undef) x @_ ;
    return ;
 }
 

@@ -24,6 +24,7 @@ lib/VCP/Source/p4.pm
 lib/VCP/Source/revml.pm
 revml.dtd
 t/00plugin.t
+t/00rev.t
 t/10vcp.t
 t/50revml.t
 t/90cvs.t

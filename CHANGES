@@ -1,7 +1,27 @@
 CHANGES for vcp - Version CoPy
 
+0.02 Tue Dec  5 01:20:31 EST 2000
+   - VCP::Dest::p4 now does change number aggregation based on the
+     comment field changing or whenever a new revision of a file with
+     unsubmitted changes shows up on the input stream.  Since revisions of
+     files are normally sorted in time order, this should work in a number
+     of cases.  I'm sure we'll need to generalize it, perhaps with a time
+     thresholding function.
+   - t/90cvs.t now tests cvs->p4 replication.
+   - VCP::Dest::p4 now doesn't try to `p4 submit` when no changes are
+     pending.
+   - VCP::Rev now prevents the same label from being applied twice to
+     a revision.  This was occuring because the "r_1"-style label that
+     gets added to a target revision by VCP::Dest::p4 could duplicate
+     a label "r_1" that happened to already be on a revision.
+   - Added t/00rev.t, the beginnings of a test suite for VCP::Rev.
+   - Tweaked bin/gentrevml to comment revisions with their change number
+     instead of using a unique comment for every revision for non-p4
+     t/test-*-in-0.revml files.  This was necessary to test cvs->p4
+     functionality.
+
 0.01 Sat Dec  2 23:10:43 EST 2000
    - First public release.  Moderately functional alpha code.  Supports
-   p4, cvs, RevML.  Expect APIs, UIs and enerthing else to change before
-   things settle down.
+     p4, cvs, RevML.  Expect APIs, UIs and enerthing else to change before
+     things settle down.
 
