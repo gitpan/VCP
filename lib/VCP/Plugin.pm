@@ -452,6 +452,8 @@ sub work_root {
 
 =item command
 
+DEPRECATED.  Replaced by VCP::Utils::foo.
+
    $self->command( 'p4' ) ;
    $self->command( 'cvs' ) ;
 
@@ -520,6 +522,8 @@ sub command {
 
       @{$self->{COMMAND}} = ( $cmd, @args ) ;
    }
+
+   Carp::confess "No command defined" unless defined $self->{COMMAND} ;
 
    return @{$self->{COMMAND}} ;
 }
@@ -687,17 +691,16 @@ sub rev_root {
    $self->deduce_rev_root ;
    print $self->rev_root ;
 
-If the user did not specify a rev_root, passing the filespec to this
-will do it.
+This is used in most plugins to deduce the rev_root from the filespec portion
+of the source or destination spec if the user did not specify a rev_root as
+an option.
+
+This function sets the rev_root to be the portion of the filespec up to (but
+not including) the first file/directory name with a wildcard.
 
 '/' and '\' are recognized as directory separators, and '*', '?', and '...'
 as wildcard sequences.  Runs of '/' and '\' characters are reduced to
 single '/' characters.
-
-If no wildcards are used in the filespec, then the dirname is used.
-
-If there is only a single name component, it is assumed to be a directory
-name.
 
 =cut
 
@@ -707,7 +710,7 @@ sub deduce_rev_root {
    my ( $spec ) = &_slash_hack ;
    my @dirs ;
    my $wildcard_found ;
-   for ( split( /\//, $spec ) ) {
+   for ( split( /[\\\/]+/, $spec ) ) {
       if ( /[*?]|\.\.\./ ) {
 	 $wildcard_found = 1 ;
          last ;
@@ -764,45 +767,42 @@ sub denormalize_name {
 
 =item run
 
+DEPRECATED: use run_safely instead.
+
    $self->run( [@cmd_and_args], \$stdout, \$stderr ) ;
 
-A wrapper around L<IPC::Run/run>, which integrates debuggins support and
+A wrapper around L<IPC::Run/run>, which integrates debugging support and
 disables stdin by default.
 
 =cut
 
 sub run {
    my VCP::Plugin $self = shift ;
-   my $cmd_line = shift ;
+   my $cmd = shift ;
 
-   debug "vcp: running ", join( ' ', map "'$_'", @$cmd_line )
+   debug "vcp: running ", join( ' ', map "'$_'", @$cmd )
       if debugging $self ;
    
-   return IPC::Run::run( $cmd_line, \undef, @_ ) ;
+   return IPC::Run::run( $cmd, \undef, @_ ) ;
 }
 
 
-use vars qw( $AUTOLOAD ) ;
+=item run_safely
 
-## AUTOLOADed methods are a touch slower than normal perl methods, but you're
-## about to fork, so it doesn't matter.
+Runs a command "safely", first chdiring in to the proper directory and
+then running it while examining STDERR through an optional filter and
+looking at the result codes to see if the command exited acceptably.
 
-sub AUTOLOAD {
-   my ( $package, $fun ) = $AUTOLOAD =~ m/(.*)::(.*)/g ;
+Most often called from VCP::Utils::foo methods.
 
+=cut
+
+sub run_safely {
    my VCP::Plugin $self = shift ;
+   my $cmd = shift ;
 
-   confess "Can only autoload $package member functions"
-      unless isa( $self, __PACKAGE__ ) ;
-
-   my $args = shift ;
-   confess "Can't AUTOLOAD '$AUTOLOAD' until a command is defined"
-      unless defined $self->command ;
-
-   my $cmd = basename( $self->command ) ;
-
-   confess "Can only AUTOLOAD '$cmd', not '$fun'"
-      unless $fun eq $cmd ;
+   my $cmd_path = $cmd->[0] ;
+   my $cmd_name = basename( $cmd_path ) ;
 
    ## Prefix succinct mode args with '>', etc.
    my $childs_stderr = '' ;
@@ -824,14 +824,14 @@ sub AUTOLOAD {
    unshift @redirs, '<', \undef
       unless grep $_ eq '<', @redirs ;
 
-   debug "vcp: running ", join( ' ', map "'$_'", $self->command, @$args ),
+   debug "vcp: running ", join( ' ', map "'$_'", @$cmd ),
       " in ", defined $self->{COMMAND_CHDIR}
          ?  $self->{COMMAND_CHDIR}
 	 : "undef"
-      if debugging $self, join( '::', ref $self, $cmd ) ;
+      if debugging $self, join( '::', ref $self, $cmd->[0] ) ;
    
    my $h = IPC::Run::harness(
-      [ $self->command, @$args ],
+      $cmd,
       @redirs,
       defined $self->{COMMAND_CHDIR}
          ? ( init => sub {
@@ -847,8 +847,7 @@ sub AUTOLOAD {
    if ( length $childs_stderr ) {
       if ( debugging $self ) {
          my $t = $childs_stderr ;
-	 my $cmdname = basename( $self->command ) ;
-	 $t =~ s/^/$cmdname: /gm ;
+	 $t =~ s/^/$cmd_name: /gm ;
 	 debug $t ;
       }
       my $f = $self->command_stderr_filter ;
@@ -860,12 +859,11 @@ sub AUTOLOAD {
       }
 
       if ( length $childs_stderr ) {
-	 my $cmdname = basename( $self->command ) ;
-	 $childs_stderr =~ s/^/$cmdname: /gm ;
+	 $childs_stderr =~ s/^/$cmd_name: /gm ;
 	 $childs_stderr .= "\n" unless substr( $childs_stderr, -1 ) eq "\n" ;
 	 push (
 	    @errors,
-	    "vcp: unexpected stderr from '$cmdname':\n",
+	    "vcp: unexpected stderr from '$cmd_name':\n",
 	    $childs_stderr,
 	 ) ;
       }
@@ -879,7 +877,7 @@ sub AUTOLOAD {
    push(
       @errors,
       "vcp: ",
-      join( ' ', $self->command, @$args ),
+      join( ' ', @$cmd ),
       " returned ",
       $h->full_result( 0 ),
       " not ",
@@ -890,9 +888,38 @@ sub AUTOLOAD {
 
    die join( '', @errors ) if @errors ;
 
-   Carp::cluck "Result of `", join( ' ', $self->command, @$args ), "` checked"
+   Carp::cluck "Result of `", join( ' ', @$cmd ), "` checked"
       if defined wantarray ;
+}
 
+
+use vars qw( $AUTOLOAD ) ;
+
+## AUTOLOADed methods are a touch slower than normal perl methods, but you're
+## about to fork, so it doesn't matter.
+
+## DEPRECATED: VCP::Utils::foo modules are taking over this function, since
+## there are often environment and command line options that always need to
+## be passed.
+
+sub AUTOLOAD {
+   my ( $package, $fun ) = $AUTOLOAD =~ m/(.*)::(.*)/g ;
+
+   my VCP::Plugin $self = shift ;
+
+   confess "Can only autoload $package member functions"
+      unless isa( $self, __PACKAGE__ ) ;
+
+   confess "Can't AUTOLOAD '$AUTOLOAD' until a command is defined"
+      unless defined $self->{COMMAND} ;
+
+   my $cmd = basename( $self->command ) ;
+
+   confess "Can only AUTOLOAD '$cmd', not '$fun'"
+      unless $fun eq $cmd ;
+
+   my $args = shift ;
+   $self->run_safely( [ $self->command, @$args ], @_ ) ;
    return ;
 }
 

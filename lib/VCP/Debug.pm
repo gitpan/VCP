@@ -164,18 +164,19 @@ sub disable_debug() {
    enable_debug ;
    enable_debug( ...debug specs... ) ;
 
-A debug spec is the name of a module (or a part of it) to be used as a
-perl5 regular expression.
+A debug spec is a regular expression that matches the name of a module.
 
 =cut
 
 sub enable_debug {
    my %specs = map { ( $_ => 1 ) } @debug_specs, @_ ;
-   my @new_debug_specs = %specs ? sort keys %specs : qr// ;
+   my @new_debug_specs = %specs 
+      ? keys %specs 
+      : qr/^/ ;
    _report_specs
       if $reported_specs && @debug_specs != @new_debug_specs ;
    @debug_specs = map(
-      /what/i && ( $dump_undebugged = 1 ) ? '##NEVER_MATCH##' : $_,
+      /^what$/i && ( $dump_undebugged = 1 ) ? '##NEVER_MATCH##' : $_,
       @new_debug_specs
    ) ;
    return ;

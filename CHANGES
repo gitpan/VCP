@@ -1,5 +1,39 @@
 CHANGES for vcp - Version CoPy
 
+0.2 - Thu Jul 19 00:18:34 EDT 2001
+   - *** VCP::Dest::p4 now uses a depot spec (//depot/...) instead of a file
+     spec on the local filesystem.  This differs from VCP::Source::p4 until I
+     can upgrade it. The p4 where command is no longer used.
+   - *** VCP::Dest::p4 now uses it's own client view pointing in to the temp
+     directory. This should solve the link() failures when going from cvs to
+     p4, since VCP::Source::cvs and VCP::Dest::p4 will both use the same temp
+     dir. This should also make normal usage a bit easier, since the user need
+     not create a client spec, etc.
+   - Altered labelsync to use p4's "-x -", now the huge lists of labelled files
+     that david d zuhn <zoo@bravara.com>'s CVS repository has are passed to p4
+     on stdin instead of blowing up the command line.
+   - VCP::Dest::p4 now passes absolute paths to the working files to p4
+     labelsync instead of paths relative to rev_root. Reported by david d zuhn
+     <zoo@bravara.com>.
+   - Remove -f (force_missing) option from VCP::Source::cvs. It is now the
+     default behavior. If need be, we can add an option to not force_missing in
+     case extraneous files get brought along, but we'll wait for user demand.
+   - Tweak deduce_rev_root algorithm to take the entire path given if no
+     wildcards are present.
+   - Added debug logging of command-line options, which is helpful when vcp is
+     run by a script, such as our test scripts. Use the VCPDEBUG environment
+     variable to enable this, set it to something like ".*" or "main".
+   - Fixed documentation for --debug (the spec is required and it's not a
+     shellish re, it's a perl5 re).
+   - Fixed docs and comments for VCP::Source::cvs's -d options (was -D)
+   - Deprecated the wacky VCP::Plugin::AUTOLOAD which was used to make things
+     like $self->p4( [ options ], redirects ) work.  So far, only VCP::Dest::p4
+     uses the new VCP::Plugin::run_safely() API, but the others will be
+     upgraded.
+   - Added a VCP::Utils::p4 to contain code that is used by VCP::Dest::p4 and
+     which will soon be used by VCP::Source::p4. Expect a VCP::Utils::cvs to
+     come along, too.
+
 0.1 Wed Jul  4 00:27:35 EDT 2001
    - Fix VCP::Dest::p4 to take the filespec from the p4:<dest> spec and
      use it as the rev_root.  No --rev-root option at this time, not sure

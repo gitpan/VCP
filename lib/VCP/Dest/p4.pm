@@ -6,52 +6,38 @@ VCP::Dest::p4 - p4 destination driver
 
 =head1 SYNOPSIS
 
-   vcp <source> p4[:<dest>]
+   vcp <source> p4:user:password@p4port:[<dest>]
+   vcp <source> p4:user(client):password@p4port:[<dest>]
+   vcp <source> p4:[<dest>]
 
-where <dest> is a filespec to a directory in the perforce repository or on the
-local client of the directory tree to use when importing files (this is known
-as the "rev root", for lack of a better term).
+The <dest> spec is a perforce repository spec and must begin with // and a
+depot name ("//depot"), not a local filesystem spec or a client spec. There
+should be a trailing "/..." specified.
 
-The <dest> spec is run through the `p4 where` command to get an absolute path
-on the local filesystem.  `p4 where` must generate exactly one line of output,
-and the line is parsed to strip off the depot and client filespecs, including
-file and directory names containing spaces (directory names containing trailing
-spaces are not handled correctly!).
+If no user name, password, or port are given, the underlying p4 command will
+look at that standard environment variables. The password is passed using the
+environment variable P4PASSWD so it won't be logged in debugging or error
+messages, the other options are passed on the command line.
 
-See `p4 help where` and the Perforce User's Guide for details on how to specify
-the <dest>, but here's an overview (do check the Perforce User's Guide to see
-if your version of `p4 where` behaves differently):
+If no client name is given, a temporary client name like "vcp_tmp_1234" will be
+created and used.  The P4CLIENT environment variable will not be used.  If an
+existing client name is given, the named client spec will be saved off,
+altered, used, and restored.  the client was created for this import, it will
+be deleted when complete, regardless of whether the client was specified by the
+user or was randomly generated.  WARNING: If perl coredumps or is killed with a
+signal that prevents cleanup--like a SIGKILL (9)--the the client deletion or
+restoral will not occur. The client view is not saved on disk, either, so back
+it up manually if you care.
 
-=over
+THE CLIENT SAVE/RESTORE FEATURE IS EXPERIMENTAL AND MAY CHANGE BASED ON USER
+FEEDBACK.
 
-=item *
-
-any //depot/, //client/, or absolute or relative local filesystem spec can be
-supplied for <dest> (local specs should not begin with "//" even if the local
-OS would be Ok with it).
-
-=item *
-
-No need to type "/..." at the end of <dest>, VCP::Dest::p4
-adds it if it's missing.
-
-=item *
-
-Relative specs (or a missing <dest>) are taken (by p4 where) to be relative to
-the current working directory.
-
-=item *
-
-You cannot put directory names like "./" or "../" in the middle of any spec,
-only at the beginning of a relative local filesystem spec.
-
-=back
-
-VCP::Dest::p4 does change number aggregation, see L<VCP::Dest/rev_cmp_sub>
-for the order in which revisions are sorted. Once sorted, a change is submitted
-whenever the change number (if present) changes, the comment (if present)
-changes, or a new rev of a file with the same name as a revision that's
-pending. THIS IS EXPERIMENTAL, PLEASE DOUBLE CHECK EVERYTHING!
+VCP::Dest::p4 attempts change set aggregation by sorting incoming revisions.
+See L<VCP::Dest/rev_cmp_sub> for the order in which revisions are sorted. Once
+sorted, a change is submitted whenever the change number (if present) changes,
+the comment (if present) changes, or a new rev of a file with the same name as
+a revision that's pending. THIS IS EXPERIMENTAL, PLEASE DOUBLE CHECK
+EVERYTHING!
 
 =head1 DESCRIPTION
 
@@ -76,16 +62,17 @@ use VCP::Debug ':debug' ;
 use VCP::Dest ;
 use VCP::Rev ;
 
-use base 'VCP::Dest' ;
+use base qw( VCP::Dest VCP::Utils::p4 ) ;
 use fields (
-#   'P4_SPEC',       ## The root of the tree to update
-   'P4_PENDING',    ## Revs pending the next submit
+#   'P4_SPEC',               ## The root of the tree to update
+   'P4_PENDING',            ## Revs pending the next submit
    'P4_DELETES_PENDING',    ## At least one 'delete' needs to be submitted.
-   'P4_WORK_DIR',   ## Where to do the work.
+   'P4_WORK_DIR',           ## Where to do the work.
+   'P4_REPO_CLIENT',        ## See VCP::Utils::p4 for accessors and usage...
 
    ## members for change number divining:
-   'P4_PREV_CHANGE_ID',  ## The change_id in the r sequence, if any
-   'P4_PREV_COMMENT',    ## Used to detect change boundaries
+   'P4_PREV_CHANGE_ID',    ## The change_id in the r sequence, if any
+   'P4_PREV_COMMENT',      ## Used to detect change boundaries
 ) ;
 
 =item new
@@ -99,12 +86,12 @@ sub new {
    my $class = shift ;
    $class = ref $class || $class ;
 
-   my VCP::Dest::p4 $self = $class->SUPER::new( @_ ) ;
+   my VCP::Dest::p4 $self = $class->VCP::Plugin::new( @_ ) ;
 
    ## Parse the options
    my ( $spec, $options ) = @_ ;
 
-   my $parsed_spec = $self->parse_repo_spec( $spec ) ;
+   my $parsed_spec = $self->parse_p4_repo_spec( $spec ) ;
 
    my $files = $parsed_spec->{FILES} ;
 
@@ -112,34 +99,34 @@ sub new {
 
    GetOptions( "ArGhOpTioN" => \"" ) or $self->usage_and_exit ; # No options!
 
-   $self->command( 'p4' ) ;
-
-   my @where_spec ;
-   if ( defined $files && length $files ) {
-      @where_spec = ( $files ) ;
-      $where_spec[0] =~ s{(/(\.\.\.)?)?$}{/...} ;
-   }
-
-   my $where_map ;
-   $self->p4( [ where => @where_spec ], ">", \$where_map ) ;
-
-   {
-      my @where_map = split /\n/g, $where_map ;
-      die "vcp: `p4 where` did not return a mapping for '$files'\n"
-	 unless @where_map ;
-      die(
-          "vcp: `p4 where",
-          map( " '$_'", @where_spec ),
-          "` returned more than one line:\n$where_map"
-      ) unless @where_map == 1 ;
-   }
-
-   my $work_root = $self->strip_p4_where( $where_map ) ;
-
-   die "Couldn't parse `p4 where` output\np4 where: $where_map"
-       unless defined $work_root and length $work_root ;
-
-   $self->work_root( $work_root ) ;
+#   $self->command( 'p4' ) ;
+#
+#   my @where_spec ;
+#   if ( defined $files && length $files ) {
+#      @where_spec = ( $files ) ;
+#      $where_spec[0] =~ s{(/(\.\.\.)?)?$}{/...} ;
+#   }
+#
+#   my $where_map ;
+#   $self->p4( [ where => @where_spec ], ">", \$where_map ) ;
+#
+#   {
+#      my @where_map = split /\n/g, $where_map ;
+#      die "vcp: `p4 where` did not return a mapping for '$files'\n"
+#	 unless @where_map ;
+#      die(
+#          "vcp: `p4 where",
+#          map( " '$_'", @where_spec ),
+#          "` returned more than one line:\n$where_map"
+#      ) unless @where_map == 1 ;
+#   }
+#
+#   my $work_root = $self->strip_p4_where( $where_map ) ;
+#
+#   die "Couldn't parse `p4 where` output\np4 where: $where_map"
+#       unless defined $work_root and length $work_root ;
+#
+#   $self->work_root( $work_root ) ;
    $self->command_chdir( $self->work_root ) ;
 #   $self->mkdir( $self->work_path ) ;
 
@@ -147,30 +134,30 @@ sub new {
 }
 
 
-sub p4 {
-   my VCP::Dest::p4 $self = shift ;
-
-   local $ENV{P4PASSWD} = $self->repo_password
-      if defined $self->repo_password ;
-
-   unshift @{$_[0]}, '-p', $self->repo_server
-      if defined $self->repo_server ;
-
-   if ( defined $self->repo_user ) {
-      my ( $user, $client ) = $self->repo_user =~ m/([^()]*)(?:\((.*)\))?/ ;
-      unshift @{$_[0]}, '-c', $client if defined $client ;
-      unshift @{$_[0]}, '-u', $user ;
-   }
-
-
-   my $tmp = $ENV{PWD} ;
-   delete $ENV{PWD} ;
-
-   $self->SUPER::p4( @_ ) ;
-   $ENV{PWD} = $tmp if defined $tmp ;
-}
-
-
+#sub p4 {
+#   my VCP::Dest::p4 $self = shift ;
+#
+#   local $ENV{P4PASSWD} = $self->repo_password
+#      if defined $self->repo_password ;
+#
+#   unshift @{$_[0]}, '-p', $self->repo_server
+#      if defined $self->repo_server ;
+#
+#   if ( defined $self->repo_user ) {
+#      my ( $user, $client ) = $self->repo_user =~ m/([^()]*)(?:\((.*)\))?/ ;
+#      unshift @{$_[0]}, '-c', $client if defined $client ;
+#      unshift @{$_[0]}, '-u', $user ;
+#   }
+#
+#
+#   my $tmp = $ENV{PWD} ;
+#   delete $ENV{PWD} ;
+#
+#   $self->SUPER::p4( @_ ) ;
+#   $ENV{PWD} = $tmp if defined $tmp ;
+#}
+#
+#
 =item strip_p4_where
 
 Takes a line of output from a `p4 where` command and strips off all but the
@@ -382,7 +369,7 @@ sub submit {
 	 $comments{$r->comment} = $r->name if defined $r->comment ;
 	 $max_time = $r->time if ! defined $max_time || $r->time > $max_time ;
 	 for my $l ( $r->labels ) {
-	    push @{$pending_labels{$l}}, $r->name ;
+	    push @{$pending_labels{$l}}, $r->dest_work_path ;
 	 }
       }
 
@@ -422,7 +409,9 @@ sub submit {
       my $label_desc ;
       $self->p4( [qw( label -o ), $l], '>', \$label_desc ) ;
       $self->p4( [qw( label -i ) ],    '<', \$label_desc ) ;
-      $self->p4( [qw( labelsync -a -l ), $l, @{$pending_labels{$l}}] ) ;
+
+      my $pending_labels = join( "\n", @{$pending_labels{$l}} ) . "\n" ;
+      $self->p4( [qw( -x - labelsync -a -l ), $l ], "<", \$pending_labels ) ;
    }
    @{$self->{P4_PENDING}} = () ;
    $self->{P4_DELETES_PENDING} = undef ;

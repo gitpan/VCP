@@ -43,11 +43,8 @@ my $t = -d 't' ? 't/' : '' ;
 my $tmp = File::Spec->tmpdir ;
 
 my $p4_options = p4_options "cvs_" ;
-#my $p4repo = File::Spec->catdir( $tmp, "cvsp4repo" ) ;
-#my $p4work = File::Spec->catdir( $tmp, "cvsp4work" ) ;
-#my ( $p4user, $p4client, $p4port ) = qw( p4_t_user p4_t_client 19666 ) ;
 my $p4spec =
-    "p4:$p4_options->{user}($p4_options->{client}):\@$p4_options->{port}:" ;
+    "p4:$p4_options->{user}:\@$p4_options->{port}://depot" ;
 
 my $cvsroot = File::Spec->catdir( $tmp, "cvsroot" ) ;
 my $cvswork = File::Spec->catdir( $tmp, "cvswork" ) ;
@@ -175,13 +172,13 @@ sub {
 
       run(
          [ @vcp, "cvs:$cvsroot:$module", qw( -r 1.1: ),
-	    "$p4spec$p4_options->{work}"
+	    "$p4spec/..."
 	 ], \undef
       ) or die "`$vcp cvs:$cvsroot:$module -r 1.1:` returned $?" ;
 
       chdir $cwd or die $! ;
 
-      run [ @vcp, "$p4spec//depot/..." ], \undef, \$out ;
+      run [ @vcp, "$p4spec/..." ], \undef, \$out ;
 
       my $in = slurp $infile ;
 
@@ -271,7 +268,7 @@ sub {
 	 or die $! ;
 
       run(
-         [ @vcp, "cvs:$cvsroot:$module", qw( -r ch_4: -f ) ],
+         [ @vcp, "cvs:$cvsroot:$module", qw( -r ch_4: ) ],
 	    \undef, \$out ,
       ) or die "`$vcp cvs:$cvsroot:$module -r ch_4:` returned $?" ;
 
@@ -345,7 +342,7 @@ sub {
       ok( 1 ) ;
 
       run(
-         [ @vcp, "cvs:$cvsroot:$module", qw( -r ch_4: -f --bootstrap=** ) ],
+         [ @vcp, "cvs:$cvsroot:$module", qw( -r ch_4: --bootstrap=** ) ],
 	    \undef, \$out ,
       ) or die "`$vcp cvs:$cvsroot:$module -r ch_4:` returned $?" ;
 
@@ -438,7 +435,7 @@ unless ( $why_skip ) {
       $ENV{P4PASSWD} = "foobar_passwd" ;
 
       launch_p4d $p4_options ;
-      init_p4_client $p4_options ;
+#      init_p4_client $p4_options ;
    }
 }
 

@@ -85,17 +85,19 @@ next one.
 
 =over
 
-=item --debug [spec], -d [spec]
+=item --debug <spec>, -d <spec>
 
-Enables display of debugging information.  Default is to enable all debugging
-if no spec is provided.  A debug spec is part or all of a module name like
-C<source::revml> or a shell-like regular expression to be compared to a module
-name.  All are compared case insensitively. The most general,
+Enables display of debugging information.
+A debug spec is part or all of a module name like
+C<Source::revml> or a perl5 regular expression to match module
+names.  Debug specs are not case insensitively.
+
+The most general,
 show-me-everything debug option is:
 
-   -d "*"
+   -d ".*"
 
-The quotations are needed to slip the "*" past most command shells.
+The quotations are needed to slip the ".*" past most command shells.
 
 Any debug specs that don't match anything during a run are printed out
 when vcp exits in order to help identify mispelled patterns.  vcp will also list
@@ -179,6 +181,8 @@ use XML::Doctype ;
    usage_and_exit() unless @ARGV ;
 
    enable_debug( split /,/, $ENV{VCPDEBUG} ) if defined $ENV{VCPDEBUG} ;
+
+   debug "command line:", join " ", map "'$_'", @ARGV if debugging "main" ;
 
    ## Parse up to the first non-option, then let sources & dests parse
    ## from there.

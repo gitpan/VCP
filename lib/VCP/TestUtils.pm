@@ -25,7 +25,7 @@ sub p4_options {
       repo    =>    File::Spec->catdir( $tmp, "${prefix}p4repo" ),
       work    =>    File::Spec->catdir( $tmp, "${prefix}p4work" ),
       user    =>    "${prefix}t_user",
-      client  =>    "${prefix}t_client",
+#      client  =>    "${prefix}t_client",
       port    =>    19666,
    } ;
 }
@@ -95,24 +95,24 @@ sub launch_p4d {
 }
 
 
-sub init_p4_client {
-   my $options = pop ;
-   croak "No options passed" unless $options && %$options ;
-   my $p4 = "p4 -c $options->{client} -u $options->{user} -p $options->{port}" ;
-   my $client_desc = `$p4 client -o` ;
-   die "$! running $p4 client -o\n" unless defined $client_desc ;
-   die "$p4 client -o returned ", $? >> 8, "\n" if $? ;
-   $client_desc =~ s(^Root.*)(Root:\t$options->{work})m ;
-   $client_desc =~ s(^View.*)(View:\n\t//depot/...\t//$options->{client}/...\n)ms ;
-   open( P4,
-      "| $p4 client -i"
-   ) or die "$! $p4 client -i" ;
-   print P4 $client_desc ;
-   unless ( close P4 ) {
-      die "$p4 client -i returned $?" if $! eq "0" ;
-      die qq{$! closing "| p4 client -i"} ;
-   }
-}
+#sub init_p4_client {
+#   my $options = pop ;
+#   croak "No options passed" unless $options && %$options ;
+#   my $p4 = "p4 -c $options->{client} -u $options->{user} -p $options->{port}" ;
+#   my $client_desc = `$p4 client -o` ;
+#   die "$! running $p4 client -o\n" unless defined $client_desc ;
+#   die "$p4 client -o returned ", $? >> 8, "\n" if $? ;
+#   $client_desc =~ s(^Root.*)(Root:\t$options->{work})m ;
+#   $client_desc =~ s(^View.*)(View:\n\t//depot/...\t//$options->{client}/...\n)ms ;
+#   open( P4,
+#      "| $p4 client -i"
+#   ) or die "$! $p4 client -i" ;
+#   print P4 $client_desc ;
+#   unless ( close P4 ) {
+#      die "$p4 client -i returned $?" if $! eq "0" ;
+#      die qq{$! closing "| p4 client -i"} ;
+#   }
+#}
 
 =head1 COPYRIGHT
 

@@ -41,10 +41,7 @@ my @vcp = ( @perl, $vcp ) ;
 my $t = -d 't' ? 't/' : '' ;
 
 my $p4_options = p4_options "p4_" ;
-#my $p4repo = File::Spec->catdir( $tmp, "p4repo" ) ;
-#my $p4work = File::Spec->catdir( $tmp, "p4work" ) ;
-#my ( $p4user, $p4client, $p4port ) = qw( p4_t_user p4_t_client 19666 ) ;
-my $p4spec = "p4:$p4_options->{user}($p4_options->{client}):\@$p4_options->{port}:" ;
+my $p4spec = "p4:$p4_options->{user}:\@$p4_options->{port}://depot/foo" ;
 
 my $tmp = File::Spec->tmpdir ;
 my $cvsroot = File::Spec->catdir( $tmp, "p4cvsroot" ) ;
@@ -92,13 +89,13 @@ sub {
    eval {
       my $out ;
       ## $in and $out allow us to avoide execing diff most of the time.
-      run [ @vcp, "revml:$infile", "$p4spec$p4_options->{work}/foo" ], \undef
-	 or die "`$vcp revml:$infile $p4spec$p4_options->{work}/foo` returned $?" ;
+      run [ @vcp, "revml:$infile", $p4spec ], \undef
+	 or die "`$vcp revml:$infile $p4spec` returned $?" ;
 
       ok( 1 ) ;
 
-      run [ @vcp, "${p4spec}foo/..." ], \undef, \$out 
-	 or die "`$vcp ${p4spec}foo/...` returned $?" ;
+      run [ @vcp, "$p4spec/..." ], \undef, \$out 
+	 or die "`$vcp $p4spec/...` returned $?" ;
 
       my $in = slurp $infile ;
 
@@ -108,8 +105,11 @@ $in =~ s{^\s*<p4_info>.*?</p4_info>\n}{}smg ;
 $in =~ s{<rep_desc>.*?</rep_desc>}{<rep_desc><!--deleted by p4.t--></rep_desc>}s ;
 $out =~ s{<rep_desc>.*?</rep_desc>}{<rep_desc><!--deleted by p4.t--></rep_desc>}s ;
 
-$in =~ s{<time>.*?</time>}{<time><!--deleted by p4.t--></time>}sg ;
+$in  =~ s{<time>.*?</time>}{<time><!--deleted by p4.t--></time>}sg ;
 $out =~ s{<time>.*?</time>}{<time><!--deleted by p4.t--></time>}sg ;
+
+$in  =~ s{(<user_id>.*?@).*?(</user_id>\n)}{$1 deleted by p4.t $2}g ;
+$out =~ s{(<user_id>.*?@).*?(</user_id>\n)}{$1 deleted by p4.t $2}g ;
 
       $out =~ s{\s*<p4_info>.*?</p4_info>}{}sg ;
 
@@ -140,7 +140,7 @@ sub {
    ## Test a single file extraction from a p4 repo.  This file exists in
    ## change 1.
    my $out ;
-   run( [@vcp, "$p4spec//depot/foo/add/f1"], \undef, \$out ) ;
+   run( [@vcp, "$p4spec/add/f1"], \undef, \$out ) ;
    ok(
       $out,
       qr{<rev_root>depot/foo/add</.+<name>f1<.+<rev_id>1<.+<rev_id>2<.+</revml>}s
@@ -151,7 +151,7 @@ sub {
    ## Test a single file extraction from a p4 repo.  This file does not exist
    ## in change 1.
    my $out ;
-   run( [@vcp, "$p4spec//depot/foo/add/f2"], \undef, \$out ) ;
+   run( [@vcp, "$p4spec/add/f2"], \undef, \$out ) ;
    ok(
       $out,
       qr{<rev_root>depot/foo/add</.+<name>f2<.+<change_id>2<.+<change_id>3<.+</revml>}s
@@ -172,8 +172,8 @@ sub {
    my $diff = '' ;
    eval {
       my $out ;
-      run( [ @vcp, "$p4spec//depot/foo/...", "cvs:/depot" ], \undef )
-	 or die "`$vcp $p4spec//depot/foo/... cvs:/depot` returned $?" ;
+      run( [ @vcp, "$p4spec/...", "cvs:/depot" ], \undef )
+	 or die "`$vcp $p4spec/... cvs:/depot` returned $?" ;
 
       ok( 1 ) ;
 
@@ -191,9 +191,9 @@ sub {
 
 #$out =~ s{<name>depot/}{<name>}g ;
 $in =~ s{^\s*<p4_info>.*?</p4_info>\n}{}smg ;
-$in =~ s{<rep_type>.*?</rep_type>}{<rep_type><!--deleted by p4.t--></rep_type>}s ;
+$in  =~ s{<rep_type>.*?</rep_type>}{<rep_type><!--deleted by p4.t--></rep_type>}s ;
 $out =~ s{<rep_type>.*?</rep_type>}{<rep_type><!--deleted by p4.t--></rep_type>}s ;
-$in =~ s{<rep_desc>.*?</rep_desc>}{<rep_desc><!--deleted by p4.t--></rep_desc>}s ;
+$in  =~ s{<rep_desc>.*?</rep_desc>}{<rep_desc><!--deleted by p4.t--></rep_desc>}s ;
 $out =~ s{<rep_desc>.*?</rep_desc>}{<rep_desc><!--deleted by p4.t--></rep_desc>}s ;
 $in =~ s{^\s*<change_id>.*?</change_id>\n}{}smg ;
 
@@ -203,7 +203,7 @@ $out =~ s{^\s*<label>ch_.*?</label>\n}{}smg ;
 $out =~ s{<rev_id>1.}{<rev_id>}g ;
 $out =~ s{<base_rev_id>1.}{<base_rev_id>}g ;
 
-$in =~ s{<user_id>.*?</user_id>}{<user_id><!--deleted by p4.t--></user_id>}sg ;
+$in  =~ s{<user_id>.*?</user_id>}{<user_id><!--deleted by p4.t--></user_id>}sg ;
 $out =~ s{<user_id>.*?</user_id>}{<user_id><!--deleted by p4.t--></user_id>}sg ;
 
 $in =~ s{<time>.*?</time>}{<time><!--deleted by p4.t--></time>}sg ;
@@ -248,7 +248,7 @@ sub {
    my $diff = '' ;
    eval {
       run
-         [ qw( p4 -u ), $p4_options->{user}, "-c", $p4_options->{client}, "-p", $p4_options->{port}, qw( counter change ) ],
+         [ qw( p4 -u ), $p4_options->{user}, "-p", $p4_options->{port}, qw( counter change ) ],
 	 \undef, \$incr_change ;
       chomp $incr_change ;
       die "Invalid change counter value: '$incr_change'"
@@ -259,24 +259,26 @@ sub {
       my $out ;
 
       ## $in and $out allow us to avoide execing diff most of the time.
-      run [ @vcp, "revml:$infile", "$p4spec$p4_options->{work}/foo" ], \undef
-	 or die "`$vcp revml:$infile $p4spec$p4_options->{work}/foo` returned $?" ;
+      run [ @vcp, "revml:$infile", "$p4spec" ], \undef
+	 or die "`$vcp revml:$infile $p4spec` returned $?" ;
 
       ok( 1 ) ;
 
-      run [ @vcp, "${p4spec}foo/...\@$incr_change,#head" ], \undef, \$out
-	 or die "`$vcp ${p4spec}foo/...\@$incr_change,#head` returned $?" ;
+      run [ @vcp, "$p4spec/...\@$incr_change,#head" ], \undef, \$out
+	 or die "`$vcp $p4spec/...\@$incr_change,#head` returned $?" ;
 
       my $in = slurp $infile ;
 
 $in =~ s{</rev_root>}{/foo</rev_root>} ;
 $out =~ s{<name>depot/}{<name>}g ;
 $in =~ s{^\s*<p4_info>.*?</p4_info>\n}{}smg ;
-$in =~ s{<rep_desc>.*?</rep_desc>}{<rep_desc><!--deleted by p4.t--></rep_desc>}s ;
+$in  =~ s{<rep_desc>.*?</rep_desc>}{<rep_desc><!--deleted by p4.t--></rep_desc>}s ;
 $out =~ s{<rep_desc>.*?</rep_desc>}{<rep_desc><!--deleted by p4.t--></rep_desc>}s ;
 
-$in =~ s{<time>.*?</time>}{<time><!--deleted by p4.t--></time>}sg ;
+$in  =~ s{<time>.*?</time>}{<time><!--deleted by p4.t--></time>}sg ;
 $out =~ s{<time>.*?</time>}{<time><!--deleted by p4.t--></time>}sg ;
+$in  =~ s{(<user_id>.*?@).*?(</user_id>)}{$1 deleted by p4.t $2}sg ;
+$out =~ s{(<user_id>.*?@).*?(</user_id>)}{$1 deleted by p4.t $2}sg ;
 
       $out =~ s{\s*<p4_info>.*?</p4_info>}{}sg ;
       ## The r_ and ch_ labels are not present in the source files.
@@ -320,10 +322,10 @@ sub {
    eval {
       my $out ;
 
-      run( [ @vcp, "${p4spec}foo/...\@$incr_change,#head", "--bootstrap=**" ],
+      run( [ @vcp, "$p4spec/...\@$incr_change,#head", "--bootstrap=**" ],
          \undef, \$out
       ) or die(
-	 "`$vcp ${p4spec}foo/...\@$incr_change,#head --bootstrap=**` returned $?"
+	 "`$vcp $p4spec/...\@$incr_change,#head --bootstrap=**` returned $?"
       ) ;
 
       my $in = slurp $infile ;
@@ -336,6 +338,8 @@ $out =~ s{<rep_desc>.*?</rep_desc>}{<rep_desc><!--deleted by p4.t--></rep_desc>}
 
 $in =~ s{<time>.*?</time>}{<time><!--deleted by p4.t--></time>}sg ;
 $out =~ s{<time>.*?</time>}{<time><!--deleted by p4.t--></time>}sg ;
+$in  =~ s{(<user_id>.*?@).*?(</user_id>)}{$1 deleted by p4.t $2}sg ;
+$out =~ s{(<user_id>.*?@).*?(</user_id>)}{$1 deleted by p4.t $2}sg ;
 
       $out =~ s{\s*<p4_info>.*?</p4_info>}{}sg ;
       ## The r_ and ch_ labels are not present in the source files.
@@ -394,7 +398,7 @@ unless ( $why_skip ) {
    $ENV{P4PASSWD} = "foobar_passwd" ;
 
    launch_p4d $p4_options ;
-   init_p4_client $p4_options ;
+#   init_p4_client $p4_options ;
    init_cvs() ;
 }
 

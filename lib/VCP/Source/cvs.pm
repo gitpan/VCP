@@ -7,13 +7,12 @@ VCP::Source::cvs - A CVS repository source
 =head1 SYNOPSIS
 
    vcp cvs:path/... -r foo        # all files in path and below labelled foo
-   vcp cvs:path/... -r foo:       # All revs of files labelled foo and newer
-   vcp cvs:path/... -r foo: -f    # All revs of files labelled foo and newer,
+   vcp cvs:path/... -r foo:       # All revs of files labelled foo and newer,
                                   # including files not tagged with foo.
    vcp cvs:path/... -r 1.1:1.10   # revs 1.1..1.10
    vcp cvs:path/... -r 1.1:       # revs 1.1 and up
 
-   vcp cvs:path/... -D ">=2000-11-18 5:26:30"
+   vcp cvs:path/... -d ">=2000-11-18 5:26:30"
                                   # All file revs newer than a date/time
 
    ## NOTE: Unlike cvs, vcp requires spaces after option letters.
@@ -75,7 +74,7 @@ one CVS repository and import to another.
 
 =item --rev-root
 
-*experimental*
+B<Experimental>.
 
 Sets the root of the source tree to export.  All files to be exported
 must be under this root directory.  The default rev-root is all of the
@@ -84,24 +83,26 @@ case of exporting a sub-tree of a larger project.  I think.
 
 =item -r
 
-   -r v_0_001:v_0_002 -f
-   -r v_0_002:-f
+   -r v_0_001:v_0_002
+   -r v_0_002:
 
-Passed to 'cvs log' as a '-r' revision specification.
+Passed to 'cvs log' as a '-r' revision specification. This corresponds to the
+-r option for the rlog command, not either of the -r options for the cvs
+command. Yes, it's confusing, but 'cvs log' calls 'rlog' and passes the
+options through.
 
-WARNING: if this
-string doesn't contain a ':', you're probably doing something wrong,
-since you're not specifying a revision range.  vcp may warn about this
-in the future.
+IMPORTANT: When using tags to specify CVS file revisions, it would ordinarily
+be the case that a number of unwanted revisions would be selected.  This is
+because the behavior of the cvs log command dumps the entire log history for
+any files that do not contain the tag. VCP captures the histories of such files
+and ignores all revisions that are older or newer than any files that match the
+tags.
 
-This will normally only replicate files which are tagged.  This means
-that files that have been added since, or which are missing the tag
-for some reason, are ignored.
+Be cautious using HEAD as the end of a revision range, this seems to cause the
+delete actions for files deleted in the last revision to not be noticed. Not
+sure why.
 
-Use the L</-f> option to force files that don't contain the tag to be
-exported.  This is probably what is expected.
-
-One of -r or L</-D> must be specified.
+One of -r or L</-d> must be specified.
 
 =item -d
 
@@ -114,20 +115,7 @@ string doesn't contain a '>' or '<', you're probably doing something wrong,
 since you're not specifying a range.  vcp may warn about this
 in the future.
 
-One of L</-r> or -D must be specified.
-
-=item -f
-
-Not implemented yet.
-
-This option causes vcp to attempt to export files that don't contain a
-particular tag.
-
-It is an error to specify C<-f> without C<-r>.
-
-It does this by exporting all revisions of files between the oldest and
-newest files that the -r specified.  Without C<-f>, these would
-be ignored.
+One of L</-r> or -d must be specified.
 
 =back
 
@@ -151,6 +139,27 @@ number are ignored with a warning like "Can't add same revision twice:...".
 
 $VERSION = 1.1 ;
 
+# Removed docs for -f, since I now think it's overcomplicating things...
+#Without a -f This will normally only replicate files which are tagged.  This
+#means that files that have been added since, or which are missing the tag for
+#some reason, are ignored.
+#
+#Use the L</-f> option to force files that don't contain the tag to be
+#=item -f
+#
+#This option causes vcp to attempt to export files that don't contain a
+#particular tag but which occur in the date range spanned by the revisions
+#specified with -r. The typical use is to get all files from a certain
+#tag to now.
+#
+#It does this by exporting all revisions of files between the oldest and
+#newest files that the -r specified.  Without C<-f>, these would
+#be ignored.
+#
+#It is an error to specify C<-f> without C<-r>.
+#
+#exported.
+
 use strict ;
 
 use Carp ;
@@ -173,7 +182,7 @@ use fields (
    'CVS_MIN',            ## The first change number needed
    'CVS_REV_SPEC',       ## The revision spec to pass to `cvs log`
    'CVS_DATE_SPEC',      ## The date spec to pass to `cvs log`
-   'CVS_FORCE_MISSING',  ## Set if -f was specified.
+   'CVS_FORCE_MISSING',  ## Set if -r was specified.
    'CVS_CVSROOT',        ## What to pass with -d, if anything
 
    'CVS_LOG_CARRYOVER',  ## The unparsed bit of the log file
@@ -227,30 +236,30 @@ sub new {
       "rev-root=s"    => \$rev_root,
       "r=s"           => \$rev_spec,
       "d=s"           => \$date_spec,
-      "f+"            => \$force_missing,
+#      "f+"            => \$force_missing,
    ) or $self->usage_and_exit ;
 
    unless ( defined $rev_spec || defined $date_spec ) {
-      print STDERR "Revision (-r) or date (-D) specification missing\n" ;
+      print STDERR "Revision (-r) or date (-d) specification missing\n" ;
       $self->usage_and_exit ;
    }
 
-   if ( $force_missing && ! defined $rev_spec ) {
-      print STDERR
-         "Force missing (-f) may not be used without a revision spec (-r)\n" ;
-      $self->usage_and_exit ;
-   }
-
+#   if ( $force_missing && ! defined $rev_spec ) {
+#      print STDERR
+#         "Force missing (-f) may not be used without a revision spec (-r)\n" ;
+#      $self->usage_and_exit ;
+#   }
+#
    unless ( defined $rev_root ) {
       $self->deduce_rev_root( $files ) ;
    }
-   else {
-      $files = "$rev_root/$files" ;
-   }
-
-## TODO: Figure out whether we should make rev_root merely set the rev_root
-## in the header.  I think we probably should do it that way, as it's more
-## flexible and less confusing.
+#   else {
+#      $files = "$rev_root/$files" ;
+#   }
+#
+### TODO: Figure out whether we should make rev_root merely set the rev_root
+### in the header.  I think we probably should do it that way, as it's more
+### flexible and less confusing.
 
    my $recurse = $files =~ s{/\.\.\.$}{} ;
 
@@ -260,7 +269,8 @@ sub new {
    $self->cvsroot( $parsed_spec->{SERVER} ) ;
    $self->rev_spec( $rev_spec ) ;
    $self->date_spec( $date_spec ) ;
-   $self->force_missing( $force_missing ) ;
+   $self->force_missing( defined $rev_spec ) ;
+#   $self->force_missing( $force_missing ) ;
 
    ## Make sure the cvs command is available
    $self->command( 'cvs', '-Q', '-z9' ) ;
@@ -361,6 +371,7 @@ sub handle_header {
    return ;
 }
 
+
 sub cvs {
    my VCP::Source::cvs $self = shift ;
 
@@ -390,8 +401,6 @@ sub get_rev {
 }
 
 
-
-
 sub copy_revs {
    my VCP::Source::cvs $self = shift ;
 
@@ -401,8 +410,10 @@ sub copy_revs {
 
    ## We need to watch STDERR for messages like
    ## cvs log: warning: no revision `ch_3' in `/home/barries/src/revengine/tmp/cvsroot/foo/add/f4,v'
-   ## and figure out which files should not be reported, because cvs log will
-   ## emit the entire log for these files.
+   ## Files that cause this warning need to have some revisions ignored because
+   ## cvs log will emit the entire log for these files in addition to 
+   ## the warning, including revisions checked in before the first tag and
+   ## after the last tag.
    my $tmp_f = $self->command_stderr_filter ;
    my %ignore_files ;
    my $ignore_file = sub {
@@ -452,15 +463,15 @@ sub copy_revs {
       $max_rev_spec_time = $max_time if substr( $self->rev_spec, -1 ) eq ':' ;
 
       debug(
-	 "cvs: -f including files in ['" . localtime( $min_rev_spec_time ),
+	 "cvs: including files in ['" . localtime( $min_rev_spec_time ),
 	 "'..'" . localtime( $max_rev_spec_time ),
 	 "']"
       ) if debugging $self ;
    }
 
-   ## Remove extra revs from queue.
-   ## TODO: Debug simultaneous use of -r and -D, since we probably are
-   ## blowing away revs that -D included that -r didn't.  I haven't
+   ## Remove extra revs from queue by copying from $revs to $self->revs().
+   ## TODO: Debug simultaneous use of -r and -d, since we probably are
+   ## blowing away revs that -d included that -r didn't.  I haven't
    ## checked to see if we do or don't blow said revs away.
    my %oldest_revs ;
    $self->revs( VCP::Revs->new ) ;
@@ -471,7 +482,7 @@ sub copy_revs {
 	    && $r->time <= $max_rev_spec_time
 	 ) {
 	    debug(
-	       "cvs: -f including file '", $r->source_name, "'"
+	       "cvs: including file '", $r->source_name, "'"
 	    ) if debugging $self ;
 	 }
 	 else {
