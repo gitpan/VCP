@@ -224,6 +224,7 @@ debug "vcp: handle_rev got $r ", $r->name if debugging $self ;
       unlink $work_path || die "$! unlinking $work_path" ;
       $self->p4( ['delete', $fn] ) ;
       $self->{P4_DELETES_PENDING} = 1 ;
+      $self->delete_seen( $r ) ;
    }
    else {
    ## TODO: Don't assume same filesystem or working link().

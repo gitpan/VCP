@@ -52,7 +52,7 @@ my $cvsroot = File::Spec->catdir( $tmp, "cvsroot" ) ;
 my $cvswork = File::Spec->catdir( $tmp, "cvswork" ) ;
 
 END {
-   rmtree [ $p4_options->{repo}, $p4_options->{p4work}, $cvsroot, $cvswork ] ;
+   rmtree [ grep defined, $p4_options->{repo}, $p4_options->{p4work}, $cvsroot, $cvswork ] ;
 }
 
 my $module = 'foo' ;  ## Must match the rev_root in the testrevml files

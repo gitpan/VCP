@@ -86,7 +86,7 @@ sub new {
    $self->command( 'cvs', '-Q', '-z9' ) ;
    $self->mkdir( $self->work_path ) ;
    $self->command_stderr_filter(
-      qr{^(?:cvs (?:server|add|remove): use 'cvs commit' to.*)\n}
+      qr{^(?:cvs (?:server|add|remove): (re-adding|use 'cvs commit' to).*)\n}
    ) ;
 
    return $self ;
@@ -192,6 +192,7 @@ sub handle_rev {
       unlink $work_path || die "$! unlinking $work_path" ;
       $self->cvs( ['remove', $fn] ) ;
       $self->cvs( ['commit', '-m', $r->comment, $fn] ) ;
+      $self->delete_seen( $r ) ;
    }
    else {
       ## TODO: Don't assume same filesystem or working link().
@@ -202,8 +203,8 @@ sub handle_rev {
 	    my $this_dir = shift @dirs  ;
 	    my $base_dir = File::Spec->catpath( $vol, $this_dir, "" ) ;
 	    do {
-	       ## Warn: MacOS danger here: "" is like Unix's "..".  Shouldn;t
-	       ## ever be a problem, though.
+	       ## Warn: MacOS danger here: "" is like Unix's "..".  Shouldn't
+	       ## ever be a problem, we hope.
 	       if ( length $base_dir && ! -d $base_dir ) {
 	          mkdir $base_dir, 0770 or die "vcp: $! making '$base_dir'" ;
 		  debug "vcp: mkdired '$base_dir' 0770" if debugging $self ;

@@ -212,6 +212,7 @@ sub handle_rev {
    }
    elsif ( $r->action eq 'delete' ) {
       $w->delete() ;
+      $self->delete_seen( $r ) ;
    }
    else {
       sysopen( F, $cp, O_RDONLY ) or die "$!: $cp\n" ;

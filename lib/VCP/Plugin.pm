@@ -131,6 +131,23 @@ sub seen {
 }
 
 
+=item delete_seen
+
+Deletes the last seen revision for a file.  Returns nothing.
+
+=cut
+
+sub delete_seen {
+   my VCP::Plugin $self = shift ;
+   my ( $arg ) = @_ ;
+
+   confess "SEEN not initted: need to call SUPER::new?"
+      unless defined $self->{SEEN} ;
+
+   delete $self->{SEEN}->{$arg->name} ;
+   return ;
+}
+
 =item none_seen
 
 Returns TRUE if $dest->seen( $r ) has not yet been called.
@@ -145,7 +162,7 @@ sub none_seen {
 
    return ! %{$self->{SEEN}} ;
 }
-   
+
 
 =item parse_repo_spec
 
@@ -374,7 +391,7 @@ sub rm_work_path {
 
    my $path = $self->work_path( @_ ) ;
 
-   if ( -e $path ) {
+   if ( defined $path && -e $path ) {
       debug "vcp: rmtree $path" if debugging $self ;
       rmtree $path or die "$!: $path" ;
    }
