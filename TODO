@@ -13,10 +13,13 @@ of those.
   - VCP::Source::cvs needs to deduce binary modes correctly
 
 - Feature Adds
-  - Need to make the transfers more transactional, so we can recover
-    from where we left off when something fails.
-  - Need to save some sort of state as to where the last export ended
-    so the next one can start from there.
+  - Need to make the transfers more transactional, so we can recover from where
+    we left off when something fails.
+  - Need to save some sort of state as to where the last export ended so the
+    next one can start from there.
+  - Offer compressed output for revml files a la tar's "z" option.
+  - Consider offering <char code=0x00 repeat=34234> (david d zuhn
+    <zoo@bravara.com>)
 
 - Efficiency
   - The cvs drivers can be made faster

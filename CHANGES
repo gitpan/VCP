@@ -1,5 +1,26 @@
 CHANGES for vcp - Version CoPy
 
+0.21 - In development
+   - Fixed VCP::Dest::p4; it was adding too many directories to a file, so
+     files ended up with the first directory or two repeated. reported by david
+     d zuhn <zoo@bravara.com>
+   - Cleaned up undefined var use in VCP::Utils::p4, reported by david d zuhn
+     <zoo@bravara.com>
+   - Fixed VCP::Dest::revml's decision making so it will choose base64 encoding
+     when faced with lots of NULs on input.  Reported by david d zuhn
+     <zoo@bravara.com>.
+   - Added a couple of compression thoughts for revml output to TODO.
+   - Reworked VCP::Dest::revml's base64 encoding logic to be more efficient in
+     time and in generated output.
+   - Changed the test suite to use base64 for the "binary" file, and to use
+     character codes from 0x00 to 0x07 in rotation to make sure binary data
+     goes through ok.
+   - refactored 90p4.t and 90cvs.t into VCP::TestUtils to make test maint.
+     easier.  Now you don't have to be clinically insane to work on the test
+     suite.  At least not all the time.
+   - Added p4->revml, cvs->revml, cvs->p4->revml tests for the re-rooting
+     feature.
+
 0.2 - Thu Jul 19 00:18:34 EDT 2001
    - *** VCP::Dest::p4 now uses a depot spec (//depot/...) instead of a file
      spec on the local filesystem.  This differs from VCP::Source::p4 until I

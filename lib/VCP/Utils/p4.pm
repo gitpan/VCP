@@ -90,7 +90,9 @@ sub parse_p4_repo_spec {
 
    my $parsed_spec = $self->parse_repo_spec( $spec ) ;
 
-   my ( $user, $client ) = $self->repo_user =~ m/([^()]*)(?:\((.*)\))?/ ;
+   my ( $user, $client ) ;
+   ( $user, $client ) = $self->repo_user =~ m/([^()]*)(?:\((.*)\))?/
+      if defined $self->repo_user ;
    $client = "vcp_tmp_$$" unless defined $client && length $client ;
 
    $self->repo_user( $user ) ;

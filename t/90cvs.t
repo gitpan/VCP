@@ -10,135 +10,130 @@ use strict ;
 
 use Carp ;
 use Cwd ;
-use File::Path ;
 use File::Spec ;
 use IPC::Run qw( run ) ;
-use POSIX ':sys_wait_h' ;
 use Test ;
 use VCP::TestUtils ;
 
 my $cwd = cwd ;
-my $p4d_borken ;
 
-my %seen ;
-my @perl = ( $^X, map {
-      my $s = $_ ;
-      $s = File::Spec->rel2abs( $_ ) ;
-      "-I$s" ;
-   } grep ! $seen{$_}++, @INC
-) ;
-
-## We always run vcp by doing a @perl, vcp, to make sure that vcp runs under
-## the same version of perl that we are running under.
-my $vcp = 'vcp' ;
-$vcp = "bin/$vcp"    if -x "bin/$vcp" ;
-$vcp = "../bin/$vcp" if -x "../bin/$vcp" ;
-
-$vcp = File::Spec->rel2abs( $vcp ) ;
-
-my @vcp = ( @perl, $vcp ) ;
+my @vcp = vcp_cmd ;
 
 my $t = -d 't' ? 't/' : '' ;
 
-my $tmp = File::Spec->tmpdir ;
-
-my $p4_options = p4_options "cvs_" ;
-my $p4spec =
-    "p4:$p4_options->{user}:\@$p4_options->{port}://depot" ;
-
-my $cvsroot = File::Spec->catdir( $tmp, "cvsroot" ) ;
-my $cvswork = File::Spec->catdir( $tmp, "cvswork" ) ;
-
-END {
-   rmtree [ grep defined, $p4_options->{repo}, $p4_options->{p4work}, $cvsroot, $cvswork ] ;
-}
-
 my $module = 'foo' ;  ## Must match the rev_root in the testrevml files
 
-sub slurp {
-   my ( $fn ) = @_ ;
-   open F, "<$fn" or die "$!: $fn" ;
-   local $/ ;
-   return <F> ;
-}
+my $cvs_options = cvs_options "cvs_" ;
+my $cvs_spec = "cvs:$cvs_options->{repo}:$module" ;
 
 my $max_change_id ;
 
+my $p4d_borken = p4d_borken ;
+my $p4_options = p4_options "cvs_" ;
+
 my @tests = (
+sub {
+   mk_tmp_dir $cvs_options->{work} ;
+   init_cvs $cvs_options, $module ;
+   $ENV{CVSROOT} = "foobar" ;
+   ok 1 ;
+},
+
+##
+## revml->cvs->revml idempotency
+##
 sub {},  ## Mult. ok()s in next sub{}.
 
 sub {
-   my $type = 'cvs' ;
-   my $infile  = $t . "test-$type-in-0.revml" ;
-   my $outfile = $t . "test-$type-out-0.revml" ;
-   my $infile_t = "test-$type-in-0-tweaked.revml" ;
-   my $outfile_t = "test-$type-out-0-tweaked.revml" ;
-
-   ##
-   ## Idempotency test revml->cvs->revml
-   ##
-   my $diff = '' ;
    eval {
-      my $out ;
-      my $err ;
+      my $infile  = $t . "test-cvs-in-0.revml" ;
       ## $in and $out allow us to avoide execing diff most of the time.
-      run( [ @vcp, "revml:$infile", "cvs:$cvsroot:$module" ], \undef )
-	 or die "`$vcp revml:$infile cvs:$cvsroot:$module` returned $?" ;
+      run [ @vcp, "revml:$infile", $cvs_spec ], \undef
+	 or die "`vcp revml:$infile $cvs_spec` returned $?" ;
 
-      ok( 1 ) ;
+      ok 1 ;
 
-      chdir $cvswork or die "$!: '$cvswork'" ;
-      run [qw( cvs -d ), $cvsroot, "checkout", $module],
-	 \undef
+      chdir $cvs_options->{work} or die "$!: '$cvs_options->{work}'" ;
+      run [qw( cvs -d ), $cvs_options->{repo}, "checkout", $module], \undef
 	 or die $! ;
 
-      run(
-         [ @vcp, "cvs:$cvsroot:$module", qw( -r 1.1: ) ], \undef, \$out
-      ) or die "`$vcp cvs:$cvsroot:$module -r 1.1:` returned $?" ;
+      my $out ;
+      run [ @vcp, $cvs_spec, qw( -r 1.1: ) ], \undef, \$out
+         or die "`vcp $cvs_spec -r 1.1:` returned $?" ;
 
       chdir $cwd or die "$!: '$cwd'" ;
 
       my $in = slurp $infile ;
 
-$in =~ s{^\s*<cvs_info>.*?</cvs_info>(\r\n|\n\r|\n)}{}smg ;
+      s_content  qw( rep_desc time user_id          ), \$in, \$out ;
+      s_content  qw( rev_root ),                       \$in, $module ;
+      rm_elts    qw( mod_time change_id cvs_info    ), \$in        ;
+      rm_elts    qw( label ), qr/r_\w+|ch_\w+/,              \$out ;
 
-$in =~ s{<rep_desc>.*?</rep_desc>}{<rep_desc><!--deleted by cvs.t--></rep_desc>}s ;
-$out =~ s{<rep_desc>.*?</rep_desc>}{<rep_desc><!--deleted by cvs.t--></rep_desc>}s ;
-
-$in =~ s{<time>.*?</time>}{<time><!--deleted by cvs.t--></time>}sg ;
-$out =~ s{<time>.*?</time>}{<time><!--deleted by cvs.t--></time>}sg ;
-
-$in =~ s{^.*<mod_time>.*?</mod_time>.*(\r\n|\n\r|\n)}{}mg ;
-
-$out =~ s{^.*<label>r_.*?</label>.*(\r\n|\n\r|\n)}{}mg ;
-
-$in =~ s{^.*<change_id>.*?</change_id>.*(\r\n|\n\r|\n)}{}mg ;
-$out =~ s{^.*<label>ch_.*?</label>.*(\r\n|\n\r|\n)}{}mg ;
-
-$in =~ s{<user_id>.*?</user_id>}{<user_id><!--deleted by cvs.t--></user_id>}sg ;
-$out =~ s{<user_id>.*?</user_id>}{<user_id><!--deleted by cvs.t--></user_id>}sg ;
-
-#      ## The r_ and ch_ labels are not present in the source files.
-#      $out =~ s{.*<label>(r|ch)_\w+</label>\r?\n\r?}{}g ;
-
-      open F, ">$infile_t" ; print F $in ; close F ;
-      open F, ">$outfile_t" ; print F $out ; close F ;
-      if (
-	 $in ne $out
-	 && run( [ 'diff', '-U', '10', $infile_t, $outfile_t ], \undef, '>', \$diff )
-	 && $? != 256
-      ) {
-	 die "`diff -d -u $infile_t $outfile_t` returned $?" ;
-      }
-
+      assert_eq $infile, $in, $out ;
    } ;
-   $diff = $@ if $@ ;
-   chomp $diff ;
-   ok( $diff, '' ) ;
-   if ( $diff eq '' ) {
-      if ( -e $infile_t  ) { unlink $infile_t  or warn "$!: $infile_t"  ; }
-      if ( -e $outfile_t ) { unlink $outfile_t or warn "$!: $outfile_t" ; }
+   ok $@ || '', '', 'diff ';
+},
+
+##
+## cvs->revml, re-rooting a dir tree
+##
+sub {},  ## Mult. ok()s in next sub{}.
+
+sub {
+   eval {
+      ## Hide global $cvs_spec for the nonce
+      my $cvs_spec = "cvs:$cvs_options->{repo}:$module/a/deeply/..." ;
+
+      ## Gotta use a working directory with a checked-out version
+      chdir $cvs_options->{work} or die $! . ": '$cvs_options->{work}'" ;
+      run [qw( cvs -d ), $cvs_options->{repo}, "checkout", $module], \undef
+	 or die $! ;
+
+      ok 1 ;
+
+      my $out ;
+      run [ @vcp, $cvs_spec, qw( -r 1.1: ) ], \undef, \$out
+         or die "`vcp $cvs_spec -r 1.1:` returned $?" ;
+
+      chdir $cwd or die $! ;
+
+      my $infile  = $t . "test-cvs-in-0.revml" ;
+      my $in = slurp $infile ;
+
+      s_content  qw( rep_desc time user_id                   ), \$in, \$out ;
+      rm_elts    qw( mod_time change_id cvs_info             ), \$in, \$out ;
+      rm_elts    qw( label ),          qr/r_\w+|ch_\w+/,              \$out ;
+
+
+      ## Strip out all files from $in that shouldn't be there
+      rm_elts    qw( rev ), qr{(?:(?!a/deeply).)*?}s, \$in ;
+
+      ## Adjust the $in paths to look like the result paths.  $in is
+      ## now the "expected" output.
+      s_content  qw( rev_root ),                       \$in, "foo/a/deeply" ;
+      $in =~ s{<name>a/deeply/}{<name>}g ;
+
+      assert_eq $infile, $in, $out ;
+   } ;
+   ok $@ || '', '', 'diff' ;
+},
+
+##
+## cvs->p4->revml
+##
+sub {
+   if ( $p4d_borken ) {
+      skip( $p4d_borken, 1, 1, $p4d_borken ) ;
+      return ;
    }
+   $ENV{P4USER}   = "foobar_user" ;
+   $ENV{P4PORT}   = "foobar_port" ;
+   $ENV{P4CLIENT} = "foobar_client" ;
+   $ENV{P4PASSWD} = "foobar_passwd" ;
+
+   launch_p4d $p4_options ;
+   ok 1 ;
 },
 
 sub {},  ## Mult. ok()s in next sub{}.
@@ -149,302 +144,184 @@ sub {
       skip( $p4d_borken, 1, 1, $p4d_borken ) ;
       return ;
    }
-   my $type = 'cvs' ;
-   my $infile  = $t . "test-$type-in-0.revml" ;
-   my $outfile = $t . "test-$type-out-0-p4.revml" ;
-   my $infile_t = "test-$type-in-0-p4-tweaked.revml" ;
-   my $outfile_t = "test-$type-out-0-p4-tweaked.revml" ;
 
-   ##
-   ## cvs->p4->revml
-   ##
-   my $diff = '' ;
+   my $p4_spec = "p4:$p4_options->{user}:\@$p4_options->{port}://depot" ;
+
+   my $infile  = $t . "test-cvs-in-0.revml" ;
    eval {
-      my $out ;
-      my $err ;
-
       ## Gotta use a working directory with a checked-out version
-      chdir $cvswork or die $! . ": '$cvswork'" ;
-      run [qw( cvs -d ), $cvsroot, "checkout", $module], \undef
+      chdir $cvs_options->{work} or die $! . ": '$cvs_options->{work}'" ;
+      run [qw( cvs -d ), $cvs_options->{repo}, "checkout", $module], \undef
 	 or die $! ;
 
-      ok( 1 ) ;
+      ok 1 ;
 
-      run(
-         [ @vcp, "cvs:$cvsroot:$module", qw( -r 1.1: ),
-	    "$p4spec/..."
-	 ], \undef
-      ) or die "`$vcp cvs:$cvsroot:$module -r 1.1:` returned $?" ;
+      run [ @vcp, $cvs_spec, qw( -r 1.1: ), "$p4_spec/..." ], \undef
+         or die "`vcp $cvs_spec -r 1.1:` returned $?" ;
 
       chdir $cwd or die $! ;
 
-      run [ @vcp, "$p4spec/..." ], \undef, \$out ;
+      my $out ;
+      run [ @vcp, "$p4_spec/..." ], \undef, \$out ;
 
       my $in = slurp $infile ;
 
-$in =~ s{^\s*<cvs_info>.*?</cvs_info>(\r\n|\n\r|\n)}{}smg ;
+      s_content  qw( rep_desc time user_id rep_type ), \$in, \$out ;
+      s_content  qw( rev_root ),                       \$in, "depot" ;
+      rm_elts    qw( mod_time change_id cvs_info    ), \$in        ;
+      rm_elts    qw( cvs_info p4_info               ),       \$out ;
+      rm_elts    qw( label ), qr/r_\w+|ch_\w+/,              \$out ;
 
-$in =~ s{<rep_type>.*?</rep_type>}{<rep_type><!--deleted by cvs.t--></rep_type>}s ;
-$out =~ s{<rep_type>.*?</rep_type>}{<rep_type><!--deleted by cvs.t--></rep_type>}s ;
-$in =~ s{<rev_root>.*?</rev_root>}{<rev_root><!--deleted by cvs.t--></rev_root>}s ;
-$out =~ s{<rev_root>.*?</rev_root>}{<rev_root><!--deleted by cvs.t--></rev_root>}s ;
-
-$in =~ s{<rep_desc>.*?</rep_desc>}{<rep_desc><!--deleted by cvs.t--></rep_desc>}s ;
-$out =~ s{<rep_desc>.*?</rep_desc>}{<rep_desc><!--deleted by cvs.t--></rep_desc>}s ;
-
-$in =~ s{<time>.*?</time>}{<time><!--deleted by cvs.t--></time>}sg ;
-$out =~ s{<time>.*?</time>}{<time><!--deleted by cvs.t--></time>}sg ;
-
-$in =~ s{^.*<mod_time>.*?</mod_time>.*(\r\n|\n\r|\n)}{}mg ;
-
-$out =~ s{^.*<label>r_.*?</label>.*(\r\n|\n\r|\n)}{}mg ;
-
-$in =~ s{^.*<change_id>.*?</change_id>.*(\r\n|\n\r|\n)}{}mg ;
-$out =~ s{^.*<label>ch_.*?</label>.*(\r\n|\n\r|\n)}{}mg ;
+      $out =~ s{<rev_id>}{<rev_id>1.}g ;
+      $out =~ s{<base_rev_id>}{<base_rev_id>1.}g ;
 
 $out =~ s{^.*<change_id>(.*?)</change_id>.*(\r\n|\n\r|\n)}{
    $max_change_id = $1 if ! defined $max_change_id || $1 > $max_change_id ;
    ""
 }gem ;
 
-$out =~ s{<rev_id>}{<rev_id>1.}g ;
-$out =~ s{<base_rev_id>}{<base_rev_id>1.}g ;
-
-$in =~ s{<user_id>.*?</user_id>}{<user_id><!--deleted by cvs.t--></user_id>}sg ;
-$out =~ s{<user_id>.*?</user_id>}{<user_id><!--deleted by cvs.t--></user_id>}sg;
-
-$out =~ s{\s*<p4_info>.*?</p4_info>}{}sg ;
-
-#      ## The r_ and ch_ labels are not present in the source files.
-#      $out =~ s{.*<label>(r|ch)_\w+</label>\r?\n\r?}{}g ;
-
-      open F, ">$infile_t" ; print F $in ; close F ;
-      open F, ">$outfile_t" ; print F $out ; close F ;
-      if (
-	 $in ne $out
-	 && run( [ 'diff', '-U', '10', $infile_t, $outfile_t ], \undef, '>', \$diff )
-	 && $? != 256
-      ) {
-	 die "`diff -d -u $infile_t $outfile_t` returned $?" ;
-      }
-
+      assert_eq $infile, $in, $out ;
    } ;
-   $diff = $@ if $@ ;
-   chomp $diff ;
-   ok( $diff, '' ) ;
-   if ( $diff eq '' ) {
-      if ( -e $infile_t  ) { unlink $infile_t  or warn "$!: $infile_t"  ; }
-      if ( -e $outfile_t ) { unlink $outfile_t or warn "$!: $outfile_t" ; }
-   }
+   ok $@ || '', '', 'diff' ;
 },
 
 sub { skip( ! defined $max_change_id, $max_change_id, 3, "Max change_id in cvs->p4 transfer" ) },
 
+##
+## cvs->p4->revml, re-rooting a dir tree
+##
 sub {},  ## Mult. ok()s in next sub{}.
 
 sub {
-   my $type = 'cvs' ;
-   my $infile  = $t . "test-$type-in-1.revml" ;
-   my $outfile = $t . "test-$type-out-1.revml" ;
-   my $infile_t = "test-$type-in-1-tweaked.revml" ;
-   my $outfile_t = "test-$type-out-1-tweaked.revml" ;
+   if ( $p4d_borken ) {
+      skip( $p4d_borken, 1, 1, $p4d_borken ) ;
+      skip( $p4d_borken, 1, 1, $p4d_borken ) ;
+      return ;
+   }
 
-   ##
-   ## Idempotency test for an incremental revml->cvs->revml update
-   ##
-   my $diff = '' ;
+   ## Hide global $cvs_spec for the nonce
+   my $cvs_spec = "cvs:$cvs_options->{repo}:$module/a/deeply/..." ;
+
+   my $p4_spec = "p4:$p4_options->{user}:\@$p4_options->{port}://depot/new/..." ;
    eval {
-      my $out ;
-      ## $in and $out allow us to avoid execing diff most of the time.
-      run( [ @vcp, "revml:$infile", "cvs:$cvsroot:$module" ], \undef )
-	 or die "`$vcp revml:$infile cvs:$cvsroot:$module` returned $?" ;
+      ## Gotta use a working directory with a checked-out version
+      chdir $cvs_options->{work} or die $! . ": '$cvs_options->{work}'" ;
+      run [qw( cvs -d ), $cvs_options->{repo}, "checkout", $module], \undef
+	 or die $! ;
 
-      ok( 1 ) ;
+      ok 1 ;
+
+      run [ @vcp, $cvs_spec, qw( -r 1.1: ), $p4_spec ], \undef
+         or die "`vcp $cvs_spec -r 1.1:` returned $?" ;
+
+      chdir $cwd or die $! ;
+
+      my $out ;
+      run [ @vcp, $p4_spec ], \undef, \$out ;
+
+      my $infile  = $t . "test-cvs-in-0.revml" ;
+      my $in = slurp $infile ;
+
+      s_content  qw( rep_desc time user_id rep_type  ), \$in, \$out ;
+      s_content  qw( rev_root ),                        \$in, "depot/new" ;
+      rm_elts    qw( mod_time change_id cvs_info     ), \$in, \$out ;
+      rm_elts    qw( cvs_info p4_info                ),       \$out ;
+      rm_elts    qw( label ),  qr/r_\w+|ch_\w+/,              \$out ;
+
+
+      $out =~ s{<rev_id>}{<rev_id>1.}g ;
+      $out =~ s{<base_rev_id>}{<base_rev_id>1.}g ;
+
+      ## Strip out all files from $in that shouldn't be there
+      rm_elts    qw( rev ), qr{(?:(?!a/deeply).)*?}s, \$in ;
+
+      ## Adjust the $in paths to look like the result paths.  $in is
+      ## now the "expected" output.
+      $in =~ s{<name>a/deeply/}{<name>}g ;
+
+      assert_eq $infile, $in, $out ;
+   } ;
+   ok $@ || '', '', 'diff' ;
+},
+
+##
+## Idempotency test for an incremental revml->cvs->revml update
+##
+sub {},  ## Mult. ok()s in next sub{}.
+
+sub {
+   my $infile  = $t . "test-cvs-in-1.revml" ;
+
+   eval {
+      ## $in and $out allow us to avoid execing diff most of the time.
+      run [ @vcp, "revml:$infile", $cvs_spec ], \undef
+	 or die "`vcp revml:$infile $cvs_spec` returned $?" ;
+
+      ok 1 ;
 
       ## Gotta use a working directory with a checked-out version
-      chdir $cvswork or die $! . ": '$cvswork'" ;
-      run [qw( cvs -d ), $cvsroot, "checkout", $module],
+      chdir $cvs_options->{work} or die $! . ": '$cvs_options->{work}'" ;
+      run [qw( cvs -d ), $cvs_options->{repo}, "checkout", $module],
          \undef, \*STDERR, \*STDERR
 	 or die $! ;
 
-      run(
-         [ @vcp, "cvs:$cvsroot:$module", qw( -r ch_4: ) ],
-	    \undef, \$out ,
-      ) or die "`$vcp cvs:$cvsroot:$module -r ch_4:` returned $?" ;
+      my $out ;
+      run [ @vcp, $cvs_spec, qw( -r ch_4: ) ], \undef, \$out
+         or die "`vcp $cvs_spec -r ch_4:` returned $?" ;
 
       chdir $cwd or die $! ;
 
       my $in = slurp $infile ;
 
-$in =~ s{^\s*<cvs_info>.*?</cvs_info>(\r\n|\n\r|\n)}{}smg ;
+      s_content  qw( rep_desc time user_id          ), \$in, \$out ;
+      s_content  qw( rev_root ),                       \$in, $module ;
+      rm_elts    qw( mod_time change_id cvs_info    ), \$in        ;
+      rm_elts    qw( label ), qr/r_\w+|ch_\w+/,              \$out ;
 
-$in =~ s{<rep_desc>.*?</rep_desc>}{<rep_desc><!--deleted by cvs.t--></rep_desc>}s ;
-$out =~ s{<rep_desc>.*?</rep_desc>}{<rep_desc><!--deleted by cvs.t--></rep_desc>}s ;
-
-$in =~ s{<time>.*?</time>}{<time><!--deleted by cvs.t--></time>}sg ;
-$out =~ s{<time>.*?</time>}{<time><!--deleted by cvs.t--></time>}sg ;
-
-$in =~ s{^.*<mod_time>.*?</mod_time>.*(\r\n|\n\r|\n)}{}mg ;
-
-$out =~ s{^.*<label>r_.*?</label>.*(\r\n|\n\r|\n)}{}mg ;
-
-$in =~ s{^.*<change_id>.*?</change_id>.*(\r\n|\n\r|\n)}{}mg ;
-$out =~ s{^.*<label>ch_.*?</label>.*(\r\n|\n\r|\n)}{}mg ;
-
-$in =~ s{<user_id>.*?</user_id>}{<user_id><!--deleted by cvs.t--></user_id>}sg ;
-$out =~ s{<user_id>.*?</user_id>}{<user_id><!--deleted by cvs.t--></user_id>}sg ;
-
-#      ## The r_ and ch_ labels are not present in the source files.
-#      $out =~ s{.*<label>(r|ch)_\w+</label>\r?\n\r?}{}g ;
-
-      open F, ">$infile_t" ; print F $in ; close F ;
-      open F, ">$outfile_t" ; print F $out ; close F ;
-      if (
-	 $in ne $out
-	 && run( [ 'diff', '-U', '10', $infile_t, $outfile_t ], \undef, '>', \$diff )
-	 && $? != 256
-      ) {
-	 die "`diff -d -u $infile_t $outfile_t` returned $?" ;
-      }
-
+      assert_eq $infile, $in, $out ;
    } ;
-   $diff = $@ if $@ ;
-   chomp $diff ;
-   ok( $diff, '' ) ;
-   if ( $diff eq '' ) {
-      if ( -e $infile_t  ) { unlink $infile_t  or warn "$!: $infile_t"  ; }
-      if ( -e $outfile_t ) { unlink $outfile_t or warn "$!: $outfile_t" ; }
-   }
+   ok $@ || '', '', 'diff' ;
 },
 
+##
+## Idempotency test, bootstrapping the second set of changes
+##
 sub {},  ## Mult. ok()s in next sub{}.
 
 sub {
-   my $type = 'cvs' ;
-   my $infile  = $t . "test-$type-in-1-bootstrap.revml" ;
-   my $outfile = $t . "test-$type-out-1-bootstrap.revml" ;
-   my $infile_t = "test-$type-in-1-bootstrap-tweaked.revml" ;
-   my $outfile_t = "test-$type-out-1-bootstrap-tweaked.revml" ;
-
-   ##
-   ## Idempotency test
-   ##
-   my $diff = '' ;
+   my $infile  = $t . "test-cvs-in-1-bootstrap.revml" ;
    eval {
-      my $out ;
-
       ## Gotta use a working directory with a checked-out version
-      chdir $cvswork or die $! . ": '$cvswork'" ;
-      run [qw( cvs -d ), $cvsroot, "checkout", $module],
+      chdir $cvs_options->{work} or die $! . ": '$cvs_options->{work}'" ;
+      run [qw( cvs -d ), $cvs_options->{repo}, "checkout", $module],
          \undef, \*STDERR, \*STDERR
 	 or die $! ;
 
-      ok( 1 ) ;
+      ok 1 ;
 
-      run(
-         [ @vcp, "cvs:$cvsroot:$module", qw( -r ch_4: --bootstrap=** ) ],
-	    \undef, \$out ,
-      ) or die "`$vcp cvs:$cvsroot:$module -r ch_4:` returned $?" ;
+      my $out ;
+      run [ @vcp, $cvs_spec, qw( -r ch_4: --bootstrap=** ) ], \undef, \$out
+         or die "`vcp $cvs_spec -r ch_4:` returned $?" ;
 
       chdir $cwd ;
 
       my $in = slurp $infile ;
 
-$in =~ s{^\s*<cvs_info>.*?</cvs_info>(\r\n|\n\r|\n)}{}smg ;
+      s_content  qw( rep_desc time user_id          ), \$in, \$out ;
+      s_content  qw( rev_root ),                       \$in, $module ;
+      rm_elts    qw( mod_time change_id cvs_info    ), \$in        ;
+      rm_elts    qw( label ), qr/r_\w+|ch_\w+/,              \$out ;
 
-$in =~ s{<rep_desc>.*?</rep_desc>}{<rep_desc><!--deleted by cvs.t--></rep_desc>}s ;
-$out =~ s{<rep_desc>.*?</rep_desc>}{<rep_desc><!--deleted by cvs.t--></rep_desc>}s ;
-
-$in =~ s{<time>.*?</time>}{<time><!--deleted by cvs.t--></time>}sg ;
-$out =~ s{<time>.*?</time>}{<time><!--deleted by cvs.t--></time>}sg ;
-
-$in =~ s{^.*<mod_time>.*?</mod_time>.*(\r\n|\n\r|\n)}{}mg ;
-
-$out =~ s{^.*<label>r_.*?</label>.*(\r\n|\n\r|\n)}{}mg ;
-
-$in =~ s{^.*<change_id>.*?</change_id>.*(\r\n|\n\r|\n)}{}mg ;
-$out =~ s{^.*<label>ch_.*?</label>.*(\r\n|\n\r|\n)}{}mg ;
-
-$in =~ s{<user_id>.*?</user_id>}{<user_id><!--deleted by cvs.t--></user_id>}sg ;
-$out =~ s{<user_id>.*?</user_id>}{<user_id><!--deleted by cvs.t--></user_id>}sg ;
-
-#      ## The r_ and ch_ labels are not present in the source files.
-#      $out =~ s{.*<label>(r|ch)_\w+</label>\r?\n\r?}{}g ;
-
-      open F, ">$infile_t" ; print F $in ; close F ;
-      open F, ">$outfile_t" ; print F $out ; close F ;
-      if (
-	 $in ne $out
-	 && run( [ 'diff', '-U', '10', $infile_t, $outfile_t ], \undef, '>', \$diff )
-	 && $? != 256
-      ) {
-	 die "`diff -d -u $infile_t $outfile_t` returned $?" ;
-      }
-
+      assert_eq $infile, $in, $out ;
    } ;
-   $diff = $@ if $@ ;
-   chomp $diff ;
-   ok( $diff, '' ) ;
-   if ( $diff eq '' ) {
-      if ( -e $infile_t  ) { unlink $infile_t  or warn "$!: $infile_t"  ; }
-      if ( -e $outfile_t ) { unlink $outfile_t or warn "$!: $outfile_t" ; }
-   }
+   ok $@ || '', '', 'diff' ;
 },
 
 ) ;
 
 plan tests => scalar( @tests ) ;
 
-##
-## Build a repository and they will come...
-##
-
 my $why_skip ;
 
-$why_skip .= "# '$vcp' not found\n"    unless -x $vcp ;
 $why_skip .= "cvs command not found\n" unless `cvs -v` =~ /Concurrent Versions System/ ;
-unless ( $why_skip ) {
-   ## Give vcp ... cvs:... a repository to work with.  Note that it does not
-   ## use $cvswork, just this test script does.
-   rmtree [ $p4_options->{repo}, $p4_options->{work} ] ;
-   mkpath [ $p4_options->{repo}, $p4_options->{work} ], 0, 0700 ;
-#   END { rmtree [$p4repo,$p4work] }
-
-
-   $ENV{CVSROOT} = $cvsroot ;
-   rmtree [ $cvsroot, $cvswork ] ;
-   mkpath [ $cvsroot, $cvswork ], 0, 0700 ;
-#   END { rmtree [$cvsroot,$cvswork] }
-
-   system qw( cvs init )                     and die "cvs init failed" ;
-
-   chdir $cvswork                            or  die "$!: $cvswork" ;
-   mkdir $module, 0770                       or  die "$!: $module" ;
-   chdir $module                             or  die "$!: $module" ;
-   system qw( cvs import -m ), "${module} import", $module, "${module}_vendor", "${module}_release"
-                                             and die "cvs import failed" ;
-   chdir $cwd                                or  die "$!: $cwd" ;
-
-   $p4d_borken = p4d_borken ;
-   unless ( $p4d_borken ) {
-      $ENV{CVSROOT} = "foobar" ;
-
-      $ENV{P4USER}   = "foobar_user" ;
-      $ENV{P4PORT}   = "foobar_port" ;
-      $ENV{P4CLIENT} = "foobar_client" ;
-      $ENV{P4PASSWD} = "foobar_passwd" ;
-
-      launch_p4d $p4_options ;
-#      init_p4_client $p4_options ;
-   }
-}
-
-
-print STDERR $why_skip if $why_skip ;
-
-
-$why_skip ? skip( 1, '' ) : $_->() for @tests ;
-
-#chdir "$cvswork/cvs_t" or die $! ;;
-#print `pwd` ;
-#run( ['cvs', 'log', glob( '*/*' )] ) ;
+$why_skip ? skip( $why_skip, 0 ) : $_->() for @tests ;

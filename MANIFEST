@@ -29,7 +29,6 @@ lib/VCP/Source/revml.pm
 lib/VCP/TestUtils.pm
 lib/VCP/Utils/p4.pm
 revml.dtd
-t/00destp4.t
 t/00plugin.t
 t/00rev.t
 t/10vcp.t

@@ -37,6 +37,7 @@ Barrie Slaymaker <barries@slaysys.com>
 =cut
 
 use Getopt::Long ;
+use MIME::Base64 ;
 
 use strict ;
 
@@ -107,6 +108,8 @@ for my $main (
 ##
 my @changes ;
 
+my $binary_counter = 0 ;
+
 {
    my $user_id = "${which}_t_user" ;
    $user_id .= '@p4_t_client' if $which eq 'p4' ;
@@ -146,26 +149,30 @@ my @changes ;
 
 	 die "counter too big" if $counter > 254 ;
 
-	 my $content = sprintf(
-	    qq{%s, revision %d, char 0x%02x="%s"\n},
-	    $name,
-	    $rev_num{$name},
-	    $counter + 1,
-	    chr( $counter + 1 ),
-	 ) ;
+	 my $content =  $name eq "binary" 
+	   ? chr( $binary_counter++ & 0x07 ) x 100
+	   : sprintf(
+	       qq{%s, revision %d, char 0x%02x="%s"\n},
+	       $name,
+	       $rev_num{$name},
+	       $counter + 1,
+	       chr( $counter + 1 ),
+	    ) ;
+
 
 	 $content = $content x 200 if $name eq "a_big_file" ;
 
 	 my $r = {
-	    name    => $name,
-	    type    => $name eq "binary" ? "binary" : "text",
-	    user_id => $user_id,
-	    content => $content,
-	    time    => "2000-01-01 12:00:${counter}Z",
+	    name     => $name,
+	    type     => $name eq "binary" ? "binary" : "text",
+	    encoding => $name eq "binary" ? "base64" : "none",
+	    user_id  => $user_id,
+	    content  => $content,
+	    time     => "2000-01-01 12:00:${counter}Z",
 	    ## In p4, all files in a change number have an identical comment.
 	    ## We impose this on the other solutions to test foo->p4 change
 	    ## number aggregation.
-	    comment => "comment $change_num\n",
+	    comment  => "comment $change_num\n",
 	 } ;
 
 	 ## p4 doesn't handle modtime until very recently, and then it
@@ -282,9 +289,10 @@ my %prev ;
 
 ## TODO: Branching, moving, and binary files
 
-rev_root "depot"    if $which eq 'p4' ;
-rev_root "foo"      if $which eq 'cvs' ;
-rev_root "whatever" if $which eq 'revml' ;
+# This is a bogus rev_root, we set it to see if it gets ignored on
+# transfers with a destination rev_root specified on the command line.
+# TODO: We should also see what happens when dest no rev_root is specified.
+rev_root "foo/bar/bah" ;
 
 my $is_first = 1 ;
 
@@ -342,10 +350,16 @@ for my $change_num ( ( ! $batch ) ? (1..3) : $bootstrap ? (4..6) : (3..6) ) {
 	    $digestion = 0 ;
 	 }
 	 else {
-	    if ( ! $pr ) {
+	    if ( ! $pr || $r->{encoding} ne "none" ) {
 	       print STDERR " content" if $debug ;
-	       start_content encoding => "none" ;
-	       _emit_characters $r->{content} ;
+	       start_content encoding => $r->{encoding} ;
+	       if ( $r->{encoding} eq "none" ) {
+		  _emit_characters $r->{content} ;
+	       }
+	       else {
+	          setDataMode( 0 ) ;
+	          characters encode_base64 $r->{content} ;
+	       }
 	       end_content ;
 	       setDataMode( 1 ) ;
 	    }

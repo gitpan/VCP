@@ -95,96 +95,16 @@ sub new {
 
    my $files = $parsed_spec->{FILES} ;
 
+   $self->deduce_rev_root( $files )
+      if defined $files && length $files ;
+
    $self->{P4_PENDING} = [] ;
 
    GetOptions( "ArGhOpTioN" => \"" ) or $self->usage_and_exit ; # No options!
 
-#   $self->command( 'p4' ) ;
-#
-#   my @where_spec ;
-#   if ( defined $files && length $files ) {
-#      @where_spec = ( $files ) ;
-#      $where_spec[0] =~ s{(/(\.\.\.)?)?$}{/...} ;
-#   }
-#
-#   my $where_map ;
-#   $self->p4( [ where => @where_spec ], ">", \$where_map ) ;
-#
-#   {
-#      my @where_map = split /\n/g, $where_map ;
-#      die "vcp: `p4 where` did not return a mapping for '$files'\n"
-#	 unless @where_map ;
-#      die(
-#          "vcp: `p4 where",
-#          map( " '$_'", @where_spec ),
-#          "` returned more than one line:\n$where_map"
-#      ) unless @where_map == 1 ;
-#   }
-#
-#   my $work_root = $self->strip_p4_where( $where_map ) ;
-#
-#   die "Couldn't parse `p4 where` output\np4 where: $where_map"
-#       unless defined $work_root and length $work_root ;
-#
-#   $self->work_root( $work_root ) ;
    $self->command_chdir( $self->work_root ) ;
-#   $self->mkdir( $self->work_path ) ;
 
    return $self ;
-}
-
-
-#sub p4 {
-#   my VCP::Dest::p4 $self = shift ;
-#
-#   local $ENV{P4PASSWD} = $self->repo_password
-#      if defined $self->repo_password ;
-#
-#   unshift @{$_[0]}, '-p', $self->repo_server
-#      if defined $self->repo_server ;
-#
-#   if ( defined $self->repo_user ) {
-#      my ( $user, $client ) = $self->repo_user =~ m/([^()]*)(?:\((.*)\))?/ ;
-#      unshift @{$_[0]}, '-c', $client if defined $client ;
-#      unshift @{$_[0]}, '-u', $user ;
-#   }
-#
-#
-#   my $tmp = $ENV{PWD} ;
-#   delete $ENV{PWD} ;
-#
-#   $self->SUPER::p4( @_ ) ;
-#   $ENV{PWD} = $tmp if defined $tmp ;
-#}
-#
-#
-=item strip_p4_where
-
-Takes a line of output from a `p4 where` command and strips off all but the
-last filespec. This is a bit tricky in the face of directory names with spaces
-and is very hard or impossible if a directory name ends in a space.
-
-It's a separate function so the test suite can have at it.
-
-=cut
-
-sub strip_p4_where {
-   shift ;
-   my ( $where_stdout ) = @_ ;
-
-   1 while chomp $where_stdout ;
-   # Trim off up to the last "//" and all non-space chars after it.
-   # Also keep trimming until the first " /" to try to work around
-   # spaces in file names.
-   my $path_start_re = $^O =~ /Win|DOS/i
-       ? "(?:[A-Za-z]:)?[\\\\/]"
-       : "/(?!/)" ;
-
-   $where_stdout =~ s{^.* (?=$path_start_re)}{}
-       or return undef ;
-
-   $where_stdout =~ s{[\\/]\.\.\.$}{} ;
-   return $where_stdout ;
 }
 
 
@@ -245,9 +165,6 @@ sub handle_rev {
    ( $r ) = @_ ;
 debug "vcp: handle_rev got $r ", $r->name if debugging $self ;
 
-   ## TODO: Build a view as needed that maps P4_SPEC on to the
-   ## /tmp/... workspace.  could even modify an existing view, I
-   ## suppose, but I don't want to risk damaging an existing view.
    if ( $self->none_seen ) {
       $self->rev_root( $self->header->{rev_root} )
          unless defined $self->rev_root ;
@@ -274,15 +191,11 @@ debug "vcp: handle_rev got $r ", $r->name if debugging $self ;
    ) {
       $self->submit ;
    }
-
-
    
    my VCP::Rev $saw = $self->seen( $r ) ;
 
-   my $fn = $self->denormalize_name( $r->name ) ;
-   ## The depot name was handled by the client view.
-   $fn =~ s{^//[^/]+/}{} ;
-   debug "vcp: importing '$fn'" if debugging $self ;
+   my $fn = $r->name ;
+   debug "vcp: importing '", $r->name, "' as '$fn'" if debugging $self ;
    my $work_path = $self->work_path( $fn ) ;
    debug "vcp: work_path '$work_path'" if debugging $self ;
 

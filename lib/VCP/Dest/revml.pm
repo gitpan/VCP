@@ -220,31 +220,38 @@ sub handle_rev {
       my $buf ;
       my $read ;
       my $has_nul ;
-      do {
+      my $total_char_count = 0 ;
+      my $bin_char_count   = 0 ;
+      while ( ! $has_nul ) {
 	 $read = sysread( F, $buf, 100_000 ) ;
 	 die "$! reading $cp\n" unless defined $read ;
-	 $has_nul = $buf =~ tr/\x00//
-	    if $read ;
-      } while $read && ! $has_nul ;
+	 last unless $read ;
+	 $has_nul = $buf =~ tr/\x00// ;
+	 $bin_char_count   += $buf =~ tr/\x00-\x08\x0b-\x1f\x7f-\xff// ;
+	 $total_char_count += length $buf ;
+      } ;
 
       sysseek( F, 0, 0 ) or die "$! seeking on $cp\n" ;
       
-      $read = sysread( F, $buf, 100_000 ) ;
-      die "$! reading $cp\n" unless defined $read ;
       $buf = '' unless $read ;
-      my $bin_char_count = $buf =~ tr/\x01-\x08\x0b-\x1f\x7f-\xff// ;
-      my $encoding = $bin_char_count * 20 > length( $buf ) * 76/57
+      ## base64 generate 77 chars (including the newline) for every 57 chars
+      ## of input. A '<char code="0x01" />' element is 20 chars.
+      my $encoding = $bin_char_count * 20 > $total_char_count * 77/57
 	 ? "base64"
 	 : "none" ;
 
-      if (  ! $saw
-         || ! defined $saw->work_path
-	 || $has_nul
-	 || $encoding ne "none"
+      if (  ! $saw                    ## First rev, can't delta
+         || ! defined $saw->work_path ## No file, can't delta
+	 || $has_nul                  ## patch would barf, can't delta
+	 || $encoding ne "none"       ## base64, can't delta
       ) {
          ## Full content, no delta.
 	 $w->start_content( encoding => $encoding ) ;
 	 while () {
+	    ## Odd chunk size is because base64 is most concise with
+	    ## chunk sizes a multiple of 57 bytes long.
+	    $read = sysread( F, $buf, 57_000 ) ;
+	    die "$! reading $cp\n" unless defined $read ;
 	    last unless $read ;
 	    if ( $encoding eq "none" ) {
 	       _emit_characters( $w, \$buf ) ;
@@ -252,8 +259,6 @@ sub handle_rev {
 	    else {
 	       $w->characters( encode_base64( $buf ) ) ;
 	    }
-	    $read = sysread( F, $buf, 100_000 ) ;
-	    die "$! reading $cp\n" unless defined $read ;
 	 }
 	 $w->end_content ;
 	 $w->setDataMode( 1 ) ;
