@@ -154,7 +154,6 @@ sub vcp_patch {
 
    while ( <PATCH> =~ /(.)(.*?\n)/ ) {
       my ( $fchar, $patch_line ) = ( $1, $2 );
-debug "patch line: $fchar$patch_line";
       if ( $fchar eq '@' ) {
          $patch_line =~ /^\@ -(\d+)(?:,\d+)? [+-]\d+(,\d+)? \@\@/
              or croak "Can't parse line: '$fchar$patch_line'.";
@@ -164,7 +163,6 @@ debug "patch line: $fchar$patch_line";
             croak "Ran off end of source file at line $source_pos"
                unless defined $source_line;
             print RESULT $source_line;
-debug "==$source_line";
             ++$source_pos;
          }
       }
@@ -172,6 +170,8 @@ debug "==$source_line";
          my $source_line = <SOURCE>;
          croak "Ran off end of source file at line $source_pos"
             unless defined $source_line;
+         $source_line =~ s/[\r\n]+\z//;
+         $patch_line =~ s/[\r\n]+\z//;
          unless ( $source_line eq $patch_line ) {
             $source_line =~ s/([\000-\037])/sprintf "\\x%02x", ord $1/ge;
             $patch_line  =~ s/([\000-\037])/sprintf "\\x%02x", ord $1/ge;

@@ -92,7 +92,11 @@ Sets the list of revs.
 sub set {
    my VCP::Revs $self = CORE::shift ;
 
+   Carp::confess "undef passed" if grep !defined, @_;
+
    if ( debugging $self || debugging scalar caller ) {
+      require UNIVERSAL;
+      Carp::confess "unblessed ref passed" if grep !UNIVERSAL::can( $_, "as_string" ), @_;
       debug( "vcp: queuing ", $_->as_string ) for @_ ;
    }
 

@@ -19,6 +19,8 @@ a temporary directory and use it to add, delete, and alter files.
 This driver allows L<vcp|vcp> to insert revisions in to a CVS
 repository.  There are no options at this time.
 
+TODO: Skip all directories named "CVS".
+
 =cut
 
 $VERSION = 1 ;

@@ -25,7 +25,7 @@
     )
 >
     <!ATTLIST   revml
-        version     CDATA   #FIXED   "0.28"
+        version     CDATA   #FIXED   "0.29"
     >
 
 <!ELEMENT rep_type (#PCDATA) >
@@ -116,10 +116,10 @@
 <!ELEMENT rev
     (
         name,
-        type,
 	(
-	    (rev_id,change_id?,digest)
+	    (type,rev_id,change_id?,digest)
 	    |(
+                type,
 	        (cvs_info|p4_info|source_safe_info|pvcs_info)?,
 	        branch_id?,
 	        rev_id,
@@ -131,7 +131,22 @@
 	        label*,
 	        lock?,
 	        comment?,
-	        (delete|move|((content|(base_name?,base_rev_id,delta)),digest))
+	        (move|((content|(base_name?,base_rev_id,delta)),digest))
+	    )
+	    |(
+                type?,
+	        (cvs_info|p4_info|source_safe_info|pvcs_info)?,
+	        branch_id?,
+	        rev_id?,
+	        change_id?,
+	        time?,
+	        mod_time?,
+	        user_id?,
+	        (p4_action|sourcesafe_action)?,
+	        label*,
+	        lock?,
+	        comment?,
+	        delete
 	    )
 	)
     ) >
@@ -167,6 +182,12 @@
 	 of <delta>.  They're not since they contain metadata, and I've
 	 been trying to limit the use of attributes to describing
 	 encodings, etc.
+    -->
+
+    <!-- The reason the <delete> variant is broken out is that VSS
+         does not associate much info with deletions or track them
+         per revision.  So, a delete can have some info in it for
+         other SCMs, but will be mostly empty for VSS.
     -->
 
     <!-- We will add repository_... tags as needed to carry along all necessary

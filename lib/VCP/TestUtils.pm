@@ -20,8 +20,9 @@ use Exporter ;
    launch_p4d
 
    cvs_borken
-   cvs_options
    init_cvs
+
+   vss_borken
 
    s_content
    rm_elts
@@ -253,7 +254,7 @@ sub rm_elts {
    } ;
 
    my $content_re = @_ && ref $_[0] eq "Regexp" ? shift : qr/.*?/s ;
-   my $re = qr{^\s*<($elt_type_re)[^>]*?>$content_re</\1\s*>\r?\n}sm ;
+   my $re = qr{^\s*<($elt_type_re)\b[^>]*?>$content_re</\1\s*>\r?\n}sm ;
 
    $$_ =~ s{$re}{}g for @_ ;
 }
@@ -394,10 +395,7 @@ sub launch_p4d {
       ## with listening on really high ports.  2048 is because I vaguely recall
       ## that some OS required root privs up to 2047 instead of 1023.
       $port = ( rand( 65536 ) % 30_000 ) + 2048 ;
-      my @p4d = (
-	 $^O !~ /Win32/ ? "p4d" : "p4d.exe",
-	 "-f", "-r", $repo, "-p", $port
-      ) ;
+      my @p4d = ( "p4d", "-f", "-r", $repo, "-p", $port ) ;
       print "# Running ", join( " ", @p4d ), "\n" ;
       $h = start \@p4d ;
       ## Wait for p4d to start.  'twould be better to wait for P4PORT to
@@ -434,7 +432,7 @@ sub launch_p4d {
 
 =item cvs_borken
 
-Returns true if the cvs is missing or too old (< 99.2).
+Returns true if cvs -v works and outputs "Concurrent Versions System".
 
 =cut
 
@@ -543,6 +541,38 @@ sub init_cvs {
    return $options ;
 }
 
+=back
+
+=head1 VSS mgmt functions
+
+=over
+
+=item vss_borken
+
+fails unless $ENV{SSUSER} is defined and the command C<ss whoami> runs and
+returns what looks like a username.
+
+May lock up if the ss.exe command prompts for a password.
+
+This is because I can't figure out a reliable way to detect if the "ss" command
+runs well without risking a lock up, since it has a habit of prompting for
+a password that I can't break it of without initalizing a custom Source Safe
+repository.
+
+=cut
+
+sub vss_borken {
+   return "SSUSER not in the environment" unless defined $ENV{SSUSER};
+
+   my $user = `ss Whoami` ;
+   return "ss command not found" unless defined $user && length $user;
+   return "ss command did not return just a username"
+       unless $user =~ /\A\S+$/m;
+
+   return "" ;
+}
+
+=back
 
 =head1 COPYRIGHT
 

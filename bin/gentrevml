@@ -6,7 +6,7 @@ gentrevml - Generate a .revml file used by the t/ scripts
 
 =head2 SYNOPSIS
 
-   perl bin/gentrevml --(revml|p4|cvs) [--bootstrap] [--batch=1]
+   perl bin/gentrevml --(revml|p4|cvs|vss) [--bootstrap] [--batch=1]
 
 =head2 DESCRIPTION
 
@@ -64,6 +64,7 @@ BEGIN {
 	 'p4'           => \&which,
 	 'cvs'          => \&which,
 	 'revml'        => \&which,
+	 'vss'          => \&which,
 	 'b|bootstrap'  => \$bootstrap,
 	 'batch=i'      => \$batch,
 	 'd|debug'      => \$debug,
@@ -212,6 +213,13 @@ my $binary_counter = 0 ;
 	    $r->{rev_id}    = $rev_num{$name} ;
 	    $r->{change_id} = $change_num ;
 	 }
+	 elsif ( $which eq 'vss' ) {
+	    $r->{rev_id}    = $rev_num{$name} ;
+            ## change_id is provided to drive the "is_first" detection
+            ## below and so that extraction of incremental exports can
+            ## use the ch_4 label.
+	    $r->{change_id} = $change_num ;
+	 }
 	 else {
 	    die "$which unhandled" ;
 	 }
@@ -353,21 +361,28 @@ for my $rev_name ( @sorted_rev_names ) {
 	 && $r->{action} eq 'delete'
       ) ;
 
+      next if ( $which eq "vss"
+	 && $r->{action} eq "delete"
+         && $r->{name} eq "readd"
+         && $change_num != $change_nums[-1]
+      );
+
       print STDERR "   $r->{name}#$r->{rev_id}:" if $debug ;
 
       my $pr = $prev{$r->{name}} ;
 
       start_rev ;
       name        $r->{name} ;
-      type        $r->{type} ;
+      type        $r->{type} unless $which eq "vss" && $r->{action} eq "delete";
 
       if ( ! $digest_mode ) {
 	 p4_info     $r->{p4_info}  if defined $r->{p4_info} ;
 	 cvs_info    $r->{cvs_info} if defined $r->{cvs_info} ;
       }
 
-      rev_id      $r->{rev_id} ;
-      change_id   $r->{change_id}   if defined $r->{change_id} ;
+      rev_id      $r->{rev_id};
+      change_id   $r->{change_id}
+         if defined $r->{change_id};# && $which ne "vss" ;
 
       my $digestion = 1 ;
 
@@ -375,17 +390,19 @@ for my $rev_name ( @sorted_rev_names ) {
 	 print STDERR " digest" if $debug ;
       }
       else {
-	 time      $r->{time} ;
-	 mod_time  $r->{mod_time} if defined $r->{mod_time} ;
+	 time      $r->{time} unless $which eq "vss" && $r->{action} eq "delete";
+	 mod_time  $r->{mod_time}
+            if defined $r->{mod_time}
+               && ! ( $which eq "vss" && $r->{action} eq "delete" );
 
-	 user_id   $r->{user_id} ;
+	 user_id   $r->{user_id} unless $which eq "vss" && $r->{action} eq "delete";
 
          if ( $r->{labels} ) {
 	    label $_ for @{$r->{labels}} ;
 	 }
 
 	 ## In p4, all files in a change number have an identical comment.
-	 comment $r->{comment} ;
+	 comment $r->{comment} unless $which eq "vss" && $r->{action} eq "delete";
 
 	 if ( $r->{action} eq 'delete' ) {
 	    print STDERR " delete" if $debug ;

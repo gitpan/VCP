@@ -215,7 +215,7 @@ sub parse_time {
    ## TODO: Get parser context here & give file, line, and column. filename
    ## and rev, while we're scheduling more work for the future.
    confess "Malformed time value $timestr\n"
-      unless $timestr =~ /^(\d\d)?\d\d(\D\d\d){2,5}/ ;
+      unless $timestr =~ /^(\d\d)?\d?\d(\D\d?\d){2,5}/ ;
    my @f = split( /\D/, $timestr ) ;
    --$f[1] ; # Month of year needs to be 0..11
    push @f, ( 0 ) x ( 6 - @f ) ;

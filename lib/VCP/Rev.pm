@@ -43,6 +43,7 @@ use fields (
    'DEST_WORK_PATH', ## Where to find the rev on local fs if it was backfilled
    'SOURCE_NAME',  ## The non-normalized name of the file, meaningful only to
                    ## a specific VCP::Source
+## TODO: delete this, I think it is no longer used.
    'SORT_KEY',   ## An ARRAY of ARRAYs of the fields and segments to sort by
 ) ;
 
@@ -92,7 +93,7 @@ BEGIN {
 my %files_to_delete ;
 
 END {
-   if ( debugging ) {
+   if ( debugging && ! $ENV{VCPNODELETE} ) {
       for ( sort keys %files_to_delete ) {
 	 if ( -e $_ ) {
 	    warn "$_ not deleted" ;
@@ -159,6 +160,29 @@ sub is_base_rev {
    my VCP::Rev $self = shift ;
 
    return ! defined $self->{ACTION} ;
+}
+
+
+=item base_revify
+
+Converts a "normal" rev in to a base rev.
+
+=cut
+
+sub base_revify {
+   my VCP::Rev $self = shift ;
+
+   $self->{$_} = undef for qw(
+      P4_INFO
+      CVS_INFO
+      STATE
+      TIME
+      MOD_TIME
+      USER_ID
+      LABELS
+      COMMENT
+      ACTION
+   );
 }
 
 
@@ -252,25 +276,38 @@ sub as_string {
       $self->is_base_rev
 	 ? map $self->$_(), qw( name rev_id change_id type )
 	 : map(
-	    $_ eq 'time' ? scalar localtime $self->$_() : $self->$_(),
-	    qw(name rev_id change_id type action time user_id )
+	    $_ eq 'time' && defined $self->$_()
+                ? scalar localtime $self->$_()
+	    : $_ eq 'comment' && defined $self->$_()
+                ? do {
+                   my $c = $self->$_();
+                   $c =~ s/\n/\\n/g;
+                   $c =~ s/\r/\\r/g;
+                   $c =~ s/\t/\\t/g;
+                   $c =~ s/\l/\\l/g;
+                   $c = substr( $c, 0, 32 )
+                      if length( $c ) > 32;
+                   $c;
+                }
+                : $self->$_(),
+	    qw(name rev_id change_id type action time user_id comment )
 	 )
    ) ;
 
    return $self->is_base_rev
-      ? sprintf( "%s#%s @%s (%s) -- base rev --", @v )
-      : sprintf( "%s#%s @%s (%s) %s %s %s", @v ) ;
+      ? sprintf( qq{%s#%s @%s (%s) -- base rev --}, @v )
+      : sprintf( qq{%s#%s @%s (%s) %s %s %s "%s"}, @v ) ;
 }
 
 sub DESTROY {
+   return if $ENV{VCPNODELETE};
    my VCP::Rev $self = shift ;
    $self->work_path( undef ) ;
    $self->dest_work_path( undef ) ;
    my $doomed = $self->work_path ;
    if ( defined $doomed && -e $doomed ) {
       debug "vcp: $self unlinking '$doomed'" if debugging $self ;
-      unlink $doomed or warn "$! unlinking $doomed\n"
-         unless $ENV{VCPNODELETE};
+      unlink $doomed or warn "$! unlinking $doomed\n";
    }
 }
 

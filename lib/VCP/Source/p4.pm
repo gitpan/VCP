@@ -344,8 +344,6 @@ sub scan_filelog {
 	    ## the oldest revision of each file.
 	    $oldest_revs{$name} = $r ;
 
-	    debug "vcp: ", $r->as_string if debugging $self ;
-
 	    $log_state = "need_comment" ;
 	 }
 	 elsif ( $log_state eq "need_comment" ) {

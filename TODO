@@ -4,6 +4,21 @@ TODO for VCP
 future feature ideas.  This file will grow to include the more important
 of those.
 
+- Handle differentlt localized timestamps
+
+- Enable an "--append-revs" flag to allow a bootstrap file to be added.  This
+  is dangerous (there's no checking to be sure that the first new version is
+  the first version after the existing version in the repository) but useful.
+
+- Review cvs2p4 and (in the guest depot) vss2p4 for gotchas they catch that we
+  should.
+
+- VCP::Utils::cvs shouldn't be putting a "co" in it's work-root; it should
+  either not use "co" at all or should put it in when translating $rev->name to
+  $work_path.
+
+- PERHAPS checksum all non-binary files line by line, removing all \r's
+
 - Bugfixes
   - Prevent keyword expansion on all checkouts.  Found by
     Thomas Quinot <quinot@inf.enst.fr>

@@ -1,5 +1,81 @@
 CHANGES for vcp - Version CoPy
 
+0.3
+   - VSS Support added
+   - bin/vcp now errors out sooner on command line errors to avoid
+     misconstruing poorly typed parameters early in @ARGV as errors in later
+     parameters.  Unkown schemes were proving troublesome.
+   - VCP::Dest
+     - "presort" sort key added. This must be the first sort key.  It is on by
+       default, and enables two-phased presort & merge strategy by default.
+       This is engaged by using the sort key "presort" first in the sort spec.
+     - avgcommenttime revision sort key to allow revs with the same timestamp
+       to be sorted by the agv timestamps for the comments they bear, so as to
+       group them with other revisions with the same comment before or after
+       the current timestamp value.
+     - if a field is present in only some revisions, it will usually be ignored
+       in the sort spec (otherwise unstable sorts can result).  These are
+       called "sporadic" fields.  This only affects sorting, not payload data.
+     - Missing (undef) comment fields are now treated as "" for base revisions
+       (which never have comments), to keep base revisions from causing comment
+       fields to be sporadic.  This only affects sorting, not payload data.
+     - Missing (undef) time fields are now treated as 0 for base revisions
+       (which never have comments), to keep base revisions from causing comment
+       fields to be sporadic.  This only affects sorting, not payload data.
+     - Sort keys are no longer stored in the VCP::Rev; they need to be
+       manipulated by VCP::Dest and I don't want to complicate VCP::Rev's
+       internal-use-only metadata, so I removed it.
+   - VCP::Dest::p4
+     - Doesn't error out when asked to delete an already-deleted file.  This
+       was happening due to Source::vss's need to always flag deleted
+       files for incremental exports because it can't tell if a file
+       was deleted before or since the beginning of the export.
+   - VCP::Dest::revml
+     - Allows several more output fields to be not-present, since
+       VSS provides scarce metadata at times (especially for Delete
+       operations).
+   - VCP::Patch
+     - Ignores lineends when checking to see if a patch is being applied
+       to the appropriate file.
+     - Some (all too verbose) debugging removed.
+   - VCP::Plugin
+     - Emits Win32-friendlt quotes ("" instead of '') when debugging
+       commands.  This allows debugging output to be copy-n-pasted
+       to the command line.
+     - Nascent support for a "stderr_filter" option when running
+       commands.  This is to make it easier to have per-command
+       custom stderr filters.  A fair amount of VSS code and perhaps
+       some CVS code should be upgraded to use this instead of the
+       current "save in a temp, set new, run command, restore temp"
+       process.
+   - VCP::Rev
+     - Doesn't complain about undeleted files if $ENV{VCPNODELETE}
+     - The SORT_KEY field is deprecated, will be removed soon.
+     - base_revify() added so that Source::vss can parse the log entry
+       for a base revision, then notice that it is a base revision and
+       remove extraneous fields.
+     - as_string(), which is used in a lot of debugging output, now
+       prints out the first 32 characters of the comment field.  This
+       is invaluable when debugging without change numbers and rational
+       (IMHO) rev_ids (as with VSS).
+     - $ENV{VCPNODELETE} now prevents individual file deletes, too.
+     - VCP::Source
+       - handle time strings with single digits (xx/y/z)
+     - Remove a Win32ism (.exe no longer needed on filename, IPC::Run
+       is better about this now).
+   - VCP::Utils::p4
+     - protect program exit when running a subprocess in an END block.
+     - Remove a Win32ism (.exe no longer needed on filename, IPC::Run
+       is better about this now).
+     - Workaround intermittant corrupted output from p4
+     - Failure to delete the working client from the p4 repository
+       is no longer fatal (why die() out of an end block and
+       cause other cleanup not to occur).
+   - Remove stray file (throwaway script) "beatonit" from MANIFEST.
+   - revml.dtd
+     - Allow VSS' almost metadataless <delete/>s.
+
+0.28 Tue Apr 30 15:57:57 EDT 2002
    - VCP::Source::cvs allows the "-kb" (or "-k b") option now so that you
      can check out binary files.  May want to add a pattern for this.
    - VCP::Source::cvs is now Win32 linends aware when parsing cvs' stdout
@@ -19,6 +95,8 @@ CHANGES for vcp - Version CoPy
    - The test suite and VCP are now more enlightening when VCPNODELETE is set
      (this convinces them to keep all working dirs around to post-mortem
      failures).
+   - dist/vcp.pl. a fat script was added to the repository, but not the
+     tarball
 
 0.27 (unreleased)
    - Win32 fixes to

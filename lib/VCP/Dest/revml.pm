@@ -36,14 +36,13 @@ use RevML::Doctype ;
 use RevML::Writer ;
 use Symbol ;
 use UNIVERSAL qw( isa ) ;
+use VCP::Debug ':debug' ;
 use VCP::Rev ;
 use Text::Diff ;
 
-use vars qw( $VERSION $debug ) ;
+use vars qw( $VERSION ) ;
 
 $VERSION = 0.1 ;
-
-$debug = 0 ;
 
 use base 'VCP::Dest' ;
 
@@ -192,18 +191,20 @@ sub handle_rev {
       "', but found a later base rev '" . $r->as_string, "'"
    ) if $saw && $is_base_rev ;
 
+   ## type and rev_id are not provided for VSS deletes
+   debug "vcp: emitting revml for ", $r->as_string
+      if debugging $self;
+
    $w->start_rev ;
    $w->name(       $fn           ) ;
-   $w->type(       $r->type      ) ;
-   $w->p4_info(    $r->p4_info   ) if defined $r->p4_info ;
-   $w->cvs_info(   $r->cvs_info  ) if defined $r->cvs_info ;
-   $w->rev_id(     $r->rev_id    ) ;
-   $w->change_id(  $r->change_id ) if defined $r->change_id ;
-   $w->time(       _ISO8601 $r->time      )
-      if ! $is_base_rev || defined $r->time ;
+   $w->type(       $r->type               ) if defined $r->type ;
+   $w->p4_info(    $r->p4_info            ) if defined $r->p4_info ;
+   $w->cvs_info(   $r->cvs_info           ) if defined $r->cvs_info ;
+   $w->rev_id(     $r->rev_id             ) if defined $r->rev_id ;
+   $w->change_id(  $r->change_id          ) if defined $r->change_id ;
+   $w->time(       _ISO8601 $r->time      ) if defined $r->time ;
    $w->mod_time(   _ISO8601 $r->mod_time  ) if defined $r->mod_time ;
-   $w->user_id(    $r->user_id   )
-      if ! $is_base_rev || defined $r->time ;
+   $w->user_id(    $r->user_id            ) if defined $r->user_id;
 
    ## Sorted for readability & testability
    $w->label( $_ ) for sort $r->labels ;
@@ -216,7 +217,7 @@ sub handle_rev {
       $w->setDataMode( 1 ) ;
    }
 
-   my $convert_crs = $^O =~ /Win32/ && $r->type eq "text" ;
+   my $convert_crs = $^O =~ /Win32/ && ( $r->type || "" ) eq "text" ;
 
    my $digestion ;
    my $close_it ;

@@ -91,7 +91,7 @@ to the current directory.
 
 =item -kb, -k b
 
-Pass the -kb option to cvs.exe, forces a binary checkout.  This is
+Pass the -kb option to cvs, forces a binary checkout.  This is
 useful when you want a text file to be checked out with Unix linends,
 or if you know that some files in the repository are not flagged as
 binary files and should be.
@@ -482,9 +482,9 @@ sub copy_revs {
 
    my $revs = $self->revs ;
 
-   ## Figure out the time stamp range for -f (FORCE_MISSING) calcs.
+   ## Figure out the time stamp range for force_missing calcs.
    my ( $min_rev_spec_time, $max_rev_spec_time ) ;
-   if ( $self->{CVS_FORCE_MISSING} ) {
+   if ( $self->force_missing ) {
       ## If the rev_spec is /:$/ || /^:/, we tweak the range ends.
       my $max_time = 0 ;
       $max_rev_spec_time = 0 ;

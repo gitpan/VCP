@@ -14,7 +14,7 @@ use VCP::Rev ;
 use VCP::Dest ;
 
 my @field_names=
-(qw( name   change_id rev_id comment )) ;
+(qw( name change_id rev_id comment )) ;
 
 ## This defines the sort specs for the test and maps them to field names
 ## that are used to test the result order.  This allows us to do multiple
@@ -46,7 +46,7 @@ my @rev_data = (
 [qw( a/b/a          2 1.1    aa )],
 [qw( a              1 1.0    a  )],
 [("") x @field_names],
-[], ## All fields undefined.
+#[], ## All fields undefined.
 ) ;
 
 
@@ -94,10 +94,15 @@ sub { ok _do_split  "20..10",    "20,,10",     "_split_rev-id" },
 
 	 my @r = @revs ;
 	 my $revs = VCP::Revs->new ;
-	 $revs->set( @r ) ;
-	 $d->sort_revs( $revs ) ;
+	 my $ok = eval {
+            $revs->set( @r ) ;
+	    $d->sort_revs( $revs ) ;
+            1;
+         };
 	 my $exp_order = join",", reverse _get_field $field_name, @revs ;
-	 my $got_order = join",",         _get_field $field_name, $revs->get ;
+	 my $got_order = $ok
+            ? join",",         _get_field $field_name, $revs->get
+            : $@;
 	 ok $got_order, $exp_order, "sort by $sort_spec" ;
       },
    } keys %specs

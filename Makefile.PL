@@ -5,11 +5,11 @@ use vars qw( $VERSION ) ;
 
 require 5.00503 ;
 
-$VERSION = 0.28 ;
+$VERSION = 0.30 ;
 
 my @programs = qw( vcp ) ;
 
-my @io_schemes = qw( revml cvs p4 ) ;
+my @io_schemes = qw( revml cvs p4 vss ) ;
 my %io_scheme_revmls = (
    (
       map {

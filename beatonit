@@ -1,3 +1,0 @@
-while make test TEST_VERBOSE=1 ; do
-    echo "=============="
-done

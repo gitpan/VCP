@@ -378,9 +378,9 @@ sub mkdir {
    my VCP::Plugin $self = shift ;
 
    my ( $path, $mode ) = @_ ;
-   $mode = 0770 unless defined $mode ;
 
    unless ( -d $path ) {
+      $mode = 0770 unless defined $mode ;
       debug "vcp: mkdir $path, ", sprintf "%04o", $mode if debugging $self ;
       mkpath [ $path ], 0, $mode
          or die "vcp: failed to create $path with mode $mode\n" ;
@@ -782,16 +782,19 @@ disables stdin by default.
 
 =cut
 
+## output command lines using " quoting on Win32 so we can cut & paste.
+my $q = $^O =~ /Win32|OS2/ ? '"' : "'";
+
 sub run {
    my VCP::Plugin $self = shift ;
    my $cmd = shift ;
 
-   debug "vcp: running ", join( ' ', map "'$_'", @$cmd )
+
+   debug "vcp: running ", join( ' ', map "$q$_$q", @$cmd )
       if debugging $self ;
    
    return IPC::Run::run( $cmd, \undef, @_ ) ;
 }
-
 
 =item run_safely
 
@@ -819,7 +822,18 @@ sub run_safely {
       push @redirs, "$fd>", shift ;
       ++$fd ;
    }
-   push @redirs, @_ ;
+
+   my $stderr_filter;
+   while ( @_ ) {
+      if ( $_[-1] eq "stderr_filter" ) {
+         shift;
+         $stderr_filter = shift;
+         next;
+      }
+      push @redirs, shift @_ ;
+   }
+   $stderr_filter = $self->command_stderr_filter
+      unless defined $stderr_filter;
 
    ## Put it on the beginning so that later redirects specified by the client
    ## can override our redirect.  This is necessary in case the client does
@@ -830,13 +844,12 @@ sub run_safely {
    unshift @redirs, '<', \undef
       unless grep $_ eq '<', @redirs ;
 
-   debug "vcp: running ", join( ' ', map "'$_'", @$cmd ),
+   debug "vcp: running ", join( ' ', map "$q$_$q", @$cmd ),
       " in ", defined $self->{COMMAND_CHDIR}
          ?  $self->{COMMAND_CHDIR}
 	 : "undef"
       if debugging $self, join( '::', ref $self, $cmd->[0] ) ;
 
-   my @init_sub ;
    my $cwd ;
 
    if ( defined $self->command_chdir ) {
@@ -850,7 +863,7 @@ sub run_safely {
 #      debug "now in ", cwd if debugging ;
    }
    
-   my $h = IPC::Run::harness( $cmd, @redirs, @init_sub ) ;
+   my $h = IPC::Run::harness( $cmd, @redirs ) ;
    $h->run ;
 
    if ( defined $cwd ) {
@@ -866,12 +879,11 @@ sub run_safely {
 	 $t =~ s/^/$cmd_name: /gm ;
 	 debug $t ;
       }
-      my $f = $self->command_stderr_filter ;
-      if ( ref $f eq 'Regexp' ) {
-         $childs_stderr =~ s/$f//mg ;
+      if ( ref $stderr_filter eq 'Regexp' ) {
+         $childs_stderr =~ s/$stderr_filter//mg ;
       }
-      elsif ( ref $f eq 'CODE' ) {
-         $f->( \$childs_stderr ) ;
+      elsif ( ref $stderr_filter eq 'CODE' ) {
+         $stderr_filter->( \$childs_stderr ) ;
       }
 
       if ( length $childs_stderr ) {

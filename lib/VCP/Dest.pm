@@ -33,6 +33,13 @@ use fields (
    'DEST_HEADER',      ## Holds header info until first rev is seen.
    'DEST_SORT_SPEC',   ## ARRAY of field names to sort by
    'DEST_SORT_KEYS',   ## HASH of sort keys, indexed by name and rev.
+   'DEST_COMMENT_TIMES', ## The average time of all instances of a comment
+   'DEST_DEFAULT_COMMENT', ## The comment to use when a comment is undefined
+                           ## This is used when presorting/merging so
+                           ## that comment will still be used to
+                           ## compare when selecting the next rev to
+                           ## merge, otherwise it would be removed as
+                           ## a sporadic field.
 ) ;
 
 use VCP::Revs ;
@@ -53,7 +60,9 @@ sub new {
 
    my VCP::Dest $self = $class->SUPER::new( @_ ) ;
 
-   $self->set_sort_spec( "change,time,comment" ) ;
+   ## rev_id is here in case the change id isn't,
+   ## name is here for VSS deletes, which have no other data.
+   $self->set_sort_spec( "presort,change,time,avgcommenttime,comment,name,rev_id" ) ;
 
    return $self ;
 }
@@ -257,7 +266,8 @@ have corresponding parse_sort_field_... handlers in this object.
 Legal field names include: name, change, change_id, rev, rev_id, comment,
 time.
 
-If a field is not present in a rev, it is treated as being less than "".
+If a field is missing from all revs, it is ignored, however at
+least one of rev_id, change, or time *must* be used.
 
 Default ordering is by
 
@@ -300,6 +310,7 @@ sub set_sort_spec {
    my @spec = split ',', join ',', @_ ;
 
    for ( @spec ) {
+      next if $_ eq "presort";
       next if $self->can( "parse_sort_field_$_" ) ;
       croak "Sort specification $_ is not available in ",
          ref( $self ) =~ /.*:(.*)/ ;
@@ -421,13 +432,20 @@ sub _split_rev_id {
    }
 }
 
+sub _pad_decimal_number {
+   for ( $_[0] ) {
+      return () unless defined ;
+      return sprintf( "%0100.50f", $_[0] );
+   }
+}
+
 *parse_sort_field_rev_id = \&parse_sort_field_rev ;
 *parse_sort_field_revision = \&parse_sort_field_rev ;
 *parse_sort_field_revision_id = \&parse_sort_field_rev ;
 sub parse_sort_field_rev {
    my VCP::Dest $self = shift ;
    my ( $rev ) = @_ ;
-   return _pad_rev_id _split_rev_id $rev->rev_id ;
+   return _pad_rev_id _split_rev_id $rev->rev_id
 }
 
 
@@ -447,27 +465,57 @@ Pads and returns the seconds-since-epoch value that is the time.
 sub parse_sort_field_time {
    my VCP::Dest $self = shift ;
    my ( $rev ) = @_ ;
-   return _pad_number $rev->time ;
+   ## We default time to 0 if it's a base rev, so it can be used
+   ## as a sort key.
+   return _pad_number $rev->time || ( $rev->is_base_rev ? 0 : undef ) ;
+}
+
+=item parse_sort_field_avgcommenttime
+
+Pads and returns the seconds-since-epoch value that is the average
+timestamp for all revs with this rev's comment.  This allows apparent
+changes that occur across time period boundaries (seconds, minutes,
+days: whatever the source RCS gives out in terms of time value
+resolution) so that revs with identical comments will be grouped near
+the time change between two time boundaries.
+
+=cut
+
+sub parse_sort_field_avgcommenttime {
+   my VCP::Dest $self = shift ;
+   my ( $rev ) = @_ ;
+   ## We default time to 0 if it's a base rev, so it can be used
+   ## as a sort key.
+   return _pad_decimal_number
+       defined $rev->comment
+           ? $self->{DEST_COMMENT_TIMES}->{$rev->comment}
+           : $rev->is_base_rev ? 0 : undef;
 }
 
 =item parse_sort_field_comment
 
-Just returns the comment.
+Just returns the comment, undef, or maybe "" (see the source).
 
 =cut
 
 sub parse_sort_field_comment {
     my VCP::Dest $self = shift ;
     my ( $rev ) = @_ ;
-    return _clean_text_field $rev->comment ;
+    return _clean_text_field
+       defined $rev->comment
+          ? $rev->comment
+          : $rev->is_base_rev
+             ? ""
+             : $self->{DEST_DEFAULT_COMMENT};
 }
 
 
-sub _calc_sort_key {
+sub _calc_sort_rec {
     my VCP::Dest $self = shift ;
-    my ( $rev ) = @_ ;
-    my @fields ;
-    for my $spec ( @{$self->{DEST_SORT_SPEC}} ) {
+    my ( $rev, $spec ) = @_ ;
+    my @fields = ( $rev );
+
+    for my $spec ( @$spec ) {
         my $sub = $self->can( "parse_sort_field_$spec" ) ;
 	die "Can't sort by $spec, no parse_sort_field_$spec found"
 	   unless $sub ;
@@ -481,26 +529,46 @@ sub _calc_sort_key {
 
 ## The sort routine
 sub _rev_cmp {
-   confess "\$a is a '$a', not a VCP::Rev" unless isa( $a, "VCP::Rev" ) ;
-   confess "\$b is a '$b', not a VCP::Rev" unless isa( $b, "VCP::Rev" ) ;
-   my @a_fields = @{$a->sort_key} ;
-   my @b_fields = @{$b->sort_key} ;
+   my @a_fields = @$a ;
+   my @b_fields = @$b ;
 
-   debug "vcp cmp: ", $a->as_string, "\n        :", $b->as_string
+   # The first "field" is the revision itself.
+   my $reva = shift @a_fields;
+   my $revb = shift @b_fields;
+   confess "\$a[0] is a '$reva', not a VCP::Rev" unless isa( $reva, "VCP::Rev" );
+   confess "\$b[0] is a '$revb', not a VCP::Rev" unless isa( $revb, "VCP::Rev" );
+
+   debug "vcp cmp: ", $reva->as_string, "\n       : ", $revb->as_string
       if explicitly_debugging "sort" ;
 
    while ( @a_fields && @b_fields ) {
       my $result ;
       my @a_segments = @{shift @a_fields} ;
       my @b_segments = @{shift @b_fields} ;
+      unless ( @a_segments && @b_segments ) {
+         debug "vcp cmp: pass" if $result && explicitly_debugging "sort" ;
+         next;
+      }
+
       while ( @a_segments && @b_segments ) {
-	 debug "vcp cmp: $a_segments[0] cmp $b_segments[0]"
+         my $a_segment = shift @a_segments;
+         my $b_segment = shift @b_segments;
+	 debug "vcp cmp: ",
+            defined $a_segment ? $a_segment : "<undef>",
+            " cmp ",
+            defined $b_segment ? $b_segment : "<undef>"
 	    if explicitly_debugging "sort" ;
-	 $result = shift( @a_segments ) cmp shift( @b_segments ) ;
+
+         unless ( defined $a_segment && defined $b_segment ) {
+            debug "vcp cmp: pass" if $result && explicitly_debugging "sort" ;
+            next;
+         }
+
+	 $result = $a_segment cmp $b_segment;
 	 debug "vcp cmp: $result" if $result && explicitly_debugging "sort" ;
 	 return $result if $result ;
       }
-      debug "vcp cmp: " . @a_segments . " <=> " . @b_segments
+      debug "vcp cmp: " . @a_segments . " <=> " . @b_segments . " ( segment length)"
 	 if explicitly_debugging "sort" ;
       $result = @a_segments <=> @b_segments ;
       debug "vcp cmp: $result" if $result && explicitly_debugging "sort" ;
@@ -508,11 +576,12 @@ sub _rev_cmp {
    }
 
    confess "revs have different numbers of sort key fields:",
-      $a->as_string, "\n",
-      $b->as_string 
+      $reva->as_string, "\n",
+      $revb->as_string 
       if @a_fields || @b_fields ;
 
-   debug "vcp cmp: 0" if debugging "sort" ;
+   debug "vcp cmp equal:", $reva->as_string, "\n             :", $revb->as_string
+      if explicitly_debugging "sort" ;
    return 0 ;
 }
 
@@ -523,27 +592,242 @@ sub _rev_cmp {
 This sorts the revisions that the source has identified in to whatever order
 is needed by the destination.  The default ordering is set by L</rev_cmp_sub>.
 
+Sorting is normally done in two passes.  Each file's revisions are sorted
+by change, rev_id, or time, then the resulting lists of revisions are
+sorted in to one long list by pulling the "least" revision off the head
+of each list based on change, time, comment, and name.
+
+This two-phased approach ensures that revisions of a file are always in
+proper order no matter what order they are provided, and furthermore in an
+order that enables change number aggregation (which is useful even if the
+destination does not provide change numbers if only to do batch submits
+or get commit timestamps in a sensible order).
+
+The sort specification "presort" is used to engage the presort-and-merge
+algorithm (it is engaged by default).  There is currently no way to
+affect the sort order in the presort phase.
+
 =cut
+
+sub _calc_sort_recs {
+   my VCP::Dest $self = shift ;
+   my ( $sort_recs, $spec ) = @_;
+
+   debug "vcp sort key: ", join ", ", @$spec
+      if debugging "sort" ;
+
+   if ( grep /avgcommenttime/, @$spec ) {
+      $self->{DEST_COMMENT_TIMES} = {};
+      for ( @$sort_recs ) {
+         my $r = $_->[0];
+         my $comment = defined $r->comment
+             ? $r->comment
+             : $r->is_base_rev ? "" : undef;
+         my $time = defined $r->time
+             ? $r->time
+             : $r->is_base_rev ? 0 : undef;
+         next unless defined $comment && defined $time;
+         push @{$self->{DEST_COMMENT_TIMES}->{$comment}}, $time;
+      }
+
+      for ( values %{$self->{DEST_COMMENT_TIMES}} ) {
+         next unless @$_;
+         my $sum;
+         $sum += $_ for @$_;
+         $_ = $sum / @$_;
+      }
+   }
+
+   for ( @$sort_recs) {
+      my $r = $_->[0];
+      my $sort_rec = $self->_calc_sort_rec( $r, $spec );
+      ## Modify the sort rec, don't replace it
+      @$_ = @$sort_rec;
+   }
+}
+
+sub _remove_sporadics {
+   my VCP::Dest $self = shift;
+   my ( $sort_recs, $spec ) = @_;
+
+   my @not_seen = my @seen = ( 0 ) x @$spec;
+   my @sporadics;
+   my @keepers = ( 0 );  ## Always keep the rev ($sort_rec[0])
+   my $its_ok;
+
+   for ( @$sort_recs) {
+      for my $i ( 1..$#$_ ) {
+         if ( @{$_->[$i]} && defined $_->[$i]->[0] ) {
+            ++$seen[$i];
+         }
+         else {
+            ++$not_seen[$i];
+         }
+      }
+   }
+   for my $i ( 1..($#seen > $#not_seen ? $#seen : $#not_seen) ) {
+      if ( $seen[$i] && $not_seen[$i] ) {
+         push @sporadics, $i - 1;
+         next;
+      }
+      push @keepers, $i;
+
+      if (
+         $seen[$i]
+         && $spec->[$i-1] =~ /^(change|rev|time)/
+      ) {
+         ## One of the quantitative ordering fields is present.
+         $its_ok = 1;
+      }
+   }
+
+   if ( @sporadics ) {
+      my @sp_desc = map 
+         "$spec->[$_] (seen $seen[$_] times, missing $not_seen[$_])\n",
+         @sporadics;
+      unless ( $its_ok ) {
+         die "missing sort key",
+            @sp_desc == 1 ? () : "s",
+            " while sorting revisions:",
+            @sp_desc == 1
+               ? ( " ", @sp_desc )
+               : ( "\n", map "    $_", @sp_desc ),
+            "sort keys are ",
+            join( ", ", @$spec ),
+            "\n";
+      }
+
+      debug "removing sporadic sort key",
+         @sp_desc == 1
+            ? ( ": ", @sp_desc )
+            : ( "s:\n", map "    $_", @sp_desc )
+         if debugging;
+
+confess "not keeping revs" unless $keepers[0] == 0;
+
+      @$_ = @{$_}[@keepers] for @$sort_recs;
+   }
+}
+
+
+sub _presort_revs {
+   my VCP::Dest $self = shift ;
+   my ( $revs, $sort_spec ) = @_;
+
+   my %p;
+   for my $r ( $revs->get ) {
+      push @{$p{$r->name}}, $self->_calc_sort_rec( $r, $sort_spec );
+   }
+
+   return [ map [ sort _rev_cmp @$_ ], values %p ];
+}
+
+
+sub _merge_presorted_revs {
+   my VCP::Dest $self = shift ;
+   my ( $presorted, $spec ) = @_;
+
+   debug "merging presorted revisions by ", join ", ", @$spec
+      if debugging ;
+
+   my @result;
+   my @p = @$presorted;
+
+   my @sort_recs = map @$_, @p;
+
+   $self->{DEST_DEFAULT_COMMENT} = "";
+   $self->_calc_sort_recs( \@sort_recs, $spec );
+   $self->{DEST_DEFAULT_COMMENT} = undef;
+
+   ## Fill in missing time values as best as we can for things like
+   ## VSS.
+   for ( 0..$#$spec ) {
+      next unless $spec->[$_] eq "time";
+      my $time_index = $_ + 1; # Ignore the rev in $_->[0]
+      for ( @p ) {
+         my $prev_t = [ "9" x 50 ];
+         for ( reverse @$_ ) {
+            if ( @{$_->[$time_index]} ) {
+               $prev_t = $_->[$time_index];
+            }
+            else {
+               $_->[$time_index] = $prev_t;
+            }
+         }
+      }
+   }
+
+   $self->_remove_sporadics( \@sort_recs, $spec );
+
+   while ( @p ) {
+      local $a = $p[0]->[0];
+      my $which = 0;
+      local $b;
+      for my $i ( 1..$#p ) {
+         $b = $p[$i]->[0];
+         if ( _rev_cmp() > 0 ) {
+            $which = $i;
+            $a = $b;
+         }
+      }
+
+      push @result, (shift @{$p[$which]})->[0];
+      splice @p, $which, 1 unless @{$p[$which]};
+   }
+
+   @result;
+}
 
 
 sub sort_revs {
    my VCP::Dest $self = shift ;
+   my ( $revs ) = @_ ;
 
-   my VCP::Revs $revs ;
-   ( $revs ) = @_ ;
+   my @spec = @{$self->{DEST_SORT_SPEC}};
 
-   for ( $revs->get ) {
-       $_->sort_key( $self->_calc_sort_key( $_ ) ) ;
+   if ( substr( $spec[0], 0, 7 ) eq "presort" ) {
+      my @prespec = ( shift @spec ) =~ m/presort\((?:\s*(\w+)[,)])*\)/;
+      @prespec = qw( change rev_id time ) unless @prespec;
+
+      debug "presorting revisions by ", join ", ", @prespec
+         if debugging ;
+
+      my $presorted = $self->_presort_revs( $revs, \@prespec );
+
+      $revs->set( $self->_merge_presorted_revs( $presorted, \@spec ) );
+
+      return;
    }
 
    debug "sorting revisions" if debugging ;
-   $revs->set( sort _rev_cmp $revs->get ) ;
+
+   my $sort_recs = [ map [ $_ ], $revs->get ];
+   $self->_calc_sort_recs( $sort_recs, \@spec );
+
+   $self->_remove_sporadics( $sort_recs, \@spec );
+
+   $revs->set( map $_->[0], sort _rev_cmp @$sort_recs ) ;
 }
 
 =back
 
 
 =back
+
+=head1 NOTES
+
+Several fields are jury rigged for "base revisions": these are fake
+revisions used to start off incremental, non-bootstrap transfers with
+the MD5 digest of the version that must be the last version in the
+target repository.  Since these are "faked", they don't contain
+comments or timestamps, so the comment and timestamp fields are treated as
+"" and 0 by the sort routines.
+
+There is a special sortkey C<avgcommenttime> that allows revisions within
+the same time period (second, minute, day) to be sorted according to the
+average time of the comment for the revision (across all revisions with
+that comment).  This causes changes that span more than one time period
+to still be grouped properly.
 
 =cut
 

@@ -252,30 +252,24 @@ use XML::Doctype ;
    if ( defined $arg && $arg =~ /^\w+:/ ) {
       my ( $scheme, $spec ) = $arg =~ /^([^:]+):(.*)/ ;
 
-      eval {
-         ## This next one consumes all options up to the dest scheme.
-	 $source = load_module( "VCP::Source::$scheme", $arg, \@ARGV );
-	 die "unknown source scheme '$scheme', try ",
-	    list_modules( "VCP::Source" ), "\n"
-	    unless defined $source ;
-      } ;
-
-      push @errors, $@ if $@ ;
+      ## This next one consumes all options up to the dest scheme.
+      $source = load_module( "VCP::Source::$scheme", $arg, \@ARGV );
+      die "unknown source scheme '$scheme:', try ",
+         list_modules( "VCP::Source" ), "\n"
+         unless defined $source ;
    }
 
    my $dest ;
    if ( defined $source ? $source->dest_expected : @ARGV ) {
       my ( $scheme, $spec ) = @ARGV
-         ? shift =~ /^([^:]+?):(.*)/
-         : ( "revml", "" );
+         ? ( $_ = shift ) =~ /^([^:]+?):(.*)/
+         : ( "revml", "" )
+         or die "Unable to parse '$_'";
 
-      eval {
-	 $dest = load_module("VCP::Dest::$scheme", "$scheme:$spec", \@ARGV );
-	 die "unknown destination scheme '$scheme', try ",
-	    list_modules( "VCP::Dest" ), "\n"
-	    unless defined $dest ;
-      } ;
-      push @errors, $@ if $@ ;
+      $dest = load_module("VCP::Dest::$scheme", "$scheme:$spec", \@ARGV );
+      die "unknown destination scheme '$scheme:', try ",
+         list_modules( "VCP::Dest" ), "\n"
+         unless defined $dest ;
       @ARGV = () ;
    }
    elsif ( @ARGV ) {

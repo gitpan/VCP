@@ -73,6 +73,7 @@ use fields (
    ## members for change number divining:
    'P4_PREV_CHANGE_ID',    ## The change_id in the r sequence, if any
    'P4_PREV_COMMENT',      ## Used to detect change boundaries
+
 ) ;
 
 =item new
@@ -137,8 +138,6 @@ confess unless defined $self && defined $self->header ;
    die "'$work_path' not created in backfill" unless -e $work_path ;
 
    return $work_path ;
-
-   return 1 ;
 }
 
 
@@ -177,16 +176,16 @@ debug "vcp: handle_rev got $r ", $r->name if debugging $self ;
 	 (
 	    defined $r->change_id && defined $self->{P4_PREV_CHANGE_ID}
 	    &&      $r->change_id ne         $self->{P4_PREV_CHANGE_ID}
-	    && ( debugging( $self ) ? debug "vcp: change_id changed" : 1 )
+	    && ( debugging( $self ) ? debug "vcp: time to submit: change_id changed" : 1 )
 	 )
 	 || (
 	    defined $r->comment && defined $self->{P4_PREV_COMMENT}
 	    &&      $r->comment ne         $self->{P4_PREV_COMMENT}
-	    && ( debugging( $self ) ? debug "vcp: comment changed" : 1 )
+	    && ( debugging( $self ) ? debug "vcp: time to submit: comment changed [", $r->comment, "] vs [", $self->{P4_PREV_COMMENT}, "]" : 1 )
 	 )
 	 || (
 	    grep( $r->name eq $_->name, @{$self->{P4_PENDING}} )
-	    && ( debugging( $self ) ? debug "vcp: name repeated" : 1 )
+	    && ( debugging( $self ) ? debug "vcp: time to submit: name repeated" : 1 )
 	 )
       )
    ) {
@@ -201,14 +200,28 @@ debug "vcp: handle_rev got $r ", $r->name if debugging $self ;
    return if $r->is_base_rev ;
 
    my $fn = $r->name ;
-   debug "vcp: importing '", $r->name, "' as '$fn'" if debugging $self ;
+   debug "vcp: importing ", $r->as_string if debugging $self ;
    my $work_path = $self->work_path( $fn ) ;
    debug "vcp: work_path '$work_path'" if debugging $self ;
 
    if ( $r->action eq 'delete' ) {
-      unlink $work_path || die "$! unlinking $work_path" ;
-      $self->p4( ['delete', $fn] ) ;
-      $self->{P4_DELETES_PENDING} = 1 ;
+      my $already_deleted;
+      if ( ! $saw ) {
+         $self->p4( [ 'files', $fn ], '>', \my $log );
+         warn $log;
+         $already_deleted = $log =~ /- delete change \d+/;
+         $self->p4( [ 'sync', '-f', $fn ] )
+            unless $already_deleted;
+      }
+
+      if ( -e $work_path ) {
+         unlink $work_path || die "$! unlinking $work_path" ;
+      }
+
+      unless ( $already_deleted ) {
+         $self->p4( ['delete', $fn] ) ;
+         $self->{P4_DELETES_PENDING} = 1 ;
+      }
       $self->delete_seen( $r ) ;
    }
    else {

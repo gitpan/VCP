@@ -42,6 +42,12 @@ sub cvs {
    return $self->run_safely( [ qw( cvs -Q -z9 ), @$args ], @_ ) ;
 }
 
+=item create_cvs_workspace
+
+Creates a temp dir named "co" for C<cvs> to work in, checks out the module
+there, and sets the work root and cvs working dir to that directory.
+
+=cut
 
 sub create_cvs_workspace {
    my $self = shift ;

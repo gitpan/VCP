@@ -66,8 +66,13 @@ sub p4 {
    delete $ENV{PWD} ;
 
    my $args = shift ;
+#if ( $ENV{UHOH} && grep( /^client$/, @$args ) && grep( /^-o$/, @$args ) ) {
+#  warn( ">>>>>>>>>>>>>p4.exe @$args > bah1" );
+#  system( "p4.exe @$args > bah1" );
+#  system( "p4.exe @$args > bah2" );
+#}
 
-   $self->run_safely( [ $^O !~ /Win32/ ? "p4" : "p4.exe", @$args ], @_ ) ;
+   $self->run_safely( [ "p4", @$args ], @_ ) ;
    $ENV{PWD} = $tmp if defined $tmp ;
 }
 
@@ -129,6 +134,11 @@ sub parse_p4_repo_spec {
 	 chomp $max ;
       }
 
+      if ( $max == 0 ) {
+         ## TODO: make this a "normal exit"
+         die "Current change number is 0, no work to do\n";
+      }
+
       if ( $min < 0 ) {
 	 $min = $max + $min ;
       }
@@ -160,8 +170,17 @@ sub init_p4_view {
    my $client_exists = grep $_ eq $client, $self->p4_clients ;
    debug "p4: client '$client' exists" if $client_exists && debugging $self ;
    $self->repo_client( $client ) ;
-
    my $client_spec = $self->p4_get_client_spec ;
+## work around a wierd intermittant failure on Win32.  The
+## Options: line *should* end in nomodtime normdir
+## instead it looks like:
+##
+## Options:	noallwrite noclobber nocompress unlocked nomÔ+
+##
+## but only occasionally!
+$client_spec = $self->p4_get_client_spec
+    if $^O =~ /Win32/ && $client_spec =~ /[\x80-\xFF]/;
+
    $self->queue_p4_restore_client_spec( $client_exists ? $client_spec : undef );
 
    my $p4_spec = $self->repo_filespec ;
@@ -170,6 +189,7 @@ sub init_p4_view {
 
    $client_spec =~ s{^Root.*}{Root:\t$work_dir}m ;
    $client_spec =~ s{^View.*}{View:\n\t$p4_spec\t//$client/...\n}ms ;
+   debug "p4: using client spec", $client_spec if debugging $self ;
    $client_spec =~ s{^(Options:.*)}{$1 nocrlf}m 
       if $^O =~ /Win32/ ;
    $client_spec =~ s{^LineEnd.*}{LineEnd:\tunix}mi ;
@@ -229,23 +249,30 @@ in debugging, but...
 my @client_backups ;
 
 END {
-   for ( @client_backups ) {
-      my ( $object, $name, $spec ) = @$_ ;
-      my $tmp_name = $object->repo_client ;
-      $object->repo_client( $name ) ;
-      if ( defined $spec ) {
-	 $object->p4_set_client_spec( $spec ) ;
+   my $child_exit;
+   {
+      local $?;  ## Protect this; we're about to run a child process and
+                 ## we want to exit with the appropriate value.
+      for ( @client_backups ) {
+         my ( $object, $name, $spec ) = @$_ ;
+         my $tmp_name = $object->repo_client ;
+         $object->repo_client( $name ) ;
+         if ( defined $spec ) {
+            $object->p4_set_client_spec( $spec ) ;
+         }
+         else {
+            my $out ;
+            $object->p4( [ "client", "-df", $object->repo_client ], ">", \$out);
+            warn "vcp: unexpected stdout from p4:\np4: ", $out
+               unless $out =~ /^Client\s.*\sdeleted./ ;
+            $child_exit = $?;
+         }
+         $object->repo_client( $tmp_name ) ;
+         $_ = undef ;
       }
-      else {
-         my $out ;
-         $object->p4( [ "client", "-d", $object->repo_client ], ">", \$out ) ;
-	 die "vcp: unexpected stdout from p4:\np4: ", $out
-	    unless $out =~ /^Client\s.*\sdeleted./ ;
-      }
-      $object->repo_client( $tmp_name ) ;
-      $_ = undef ;
+      @client_backups = () ;
    }
-   @client_backups = () ;
+   $? = $child_exit if $child_exit && ! $?;
 }
 
 
