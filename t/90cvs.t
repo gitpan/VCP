@@ -31,7 +31,6 @@ my $p4_options = p4_options "cvs_" ;
 
 my @tests = (
 sub {
-   mk_tmp_dir $cvs_options->{work} ;
    init_cvs $cvs_options, $module ;
    $ENV{CVSROOT} = "foobar" ;
    ok 1 ;
@@ -120,7 +119,6 @@ sub {
 sub {
    if ( $p4d_borken ) {
       skip( $p4d_borken, 1, 1, $p4d_borken ) ;
-      skip( $p4d_borken, 1, 1, $p4d_borken ) ;
       return ;
    }
 
@@ -162,7 +160,6 @@ sub { skip( ! defined $max_change_id, $max_change_id, 3, "Max change_id in cvs->
 ##
 sub {
    if ( $p4d_borken ) {
-      skip( $p4d_borken, 1, 1, $p4d_borken ) ;
       skip( $p4d_borken, 1, 1, $p4d_borken ) ;
       return ;
    }

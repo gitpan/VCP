@@ -53,8 +53,9 @@ in an END block
    END { rmtree \@tmp_dirs }
 
    sub mk_tmp_dir {
+      confess "undef!!!" if grep !defined, @_ ;
       rmtree \@_ ;
-      mkpath \@_, 0, 0770 ;
+      mkpath \@_, 1, 0770 ;
       push @tmp_dirs, @_ ;
    }
 }
@@ -226,9 +227,10 @@ Returns a hash of options.  $prefix should be unique to the calling program.
 sub p4_options {
    my $prefix = shift || "" ;
    my $tmp = File::Spec->tmpdir ;
+   ## TODO: Find an unused port for p4d.  Or at least do a rand().
    return {
-      repo    =>    File::Spec->catdir( $tmp, "${prefix}p4repo" ),
-#      work    =>    File::Spec->catdir( $tmp, "${prefix}p4work" ),
+      repo    =>    File::Spec->catdir( $tmp, "vcp$$\_${prefix}p4repo" ),
+#      work    =>    File::Spec->catdir( $tmp, "vcp$$\_${prefix}p4work" ),
       user    =>    "${prefix}t_user",
       port    =>    19666,
    } ;
@@ -334,8 +336,8 @@ sub cvs_options {
    my $prefix = shift || "" ;
    my $tmp = File::Spec->tmpdir ;
    return {
-      repo    =>    File::Spec->catdir( $tmp, "${prefix}cvsroot" ),
-      work    =>    File::Spec->catdir( $tmp, "${prefix}cvswork" ),
+      repo    =>    File::Spec->catdir( $tmp, "vcp$$\_${prefix}cvsroot" ),
+      work    =>    File::Spec->catdir( $tmp, "vcp$$\_${prefix}cvswork" ),
    } ;
 }
 
@@ -343,14 +345,14 @@ sub cvs_options {
 
    init_cvs $cvs_options, $module_name ;
 
-Creates a CVS repository containing an empty module.
+Creates a CVS repository containing an empty module. Also sets
+$ENV{LOGNAME} if it notices that we're running as root, so CVS won't give
+a "cannot commit files as 'root'" error. Tries "nobody", then "guest".
 
 =cut
 
 sub init_cvs {
    my ( $options, $module ) = @_ ;
-
-   my ( $repo_dir, $work_dir ) = @{$options}{ 'repo', 'work' } ;
 
    my $cwd = cwd ;
    ## Give vcp ... cvs:... a repository to work with.  Note that it does not
@@ -358,11 +360,46 @@ sub init_cvs {
 
    $ENV{CVSROOT} = $options->{repo} ;
 
+   ## CVS does not like root to commit files.  So, try to fool it.
+   ## CVS calls geteuid() to determine rootness (so does perl's $>).
+   ## If root, CVS calls getlogin() first, then checks the LOGNAME and USER
+   ## environment vars.
+   ##
+   ## What this means is: if the user is actually logged in on a physical
+   ## terminal as 'root', getlogin() will return "root" to cvs and we can't
+   ## fool CVS.
+   ##
+   ## However, if they've used "su", a very common occurence, then getlogin()
+   ## will return failure (NULL in C, undef in Perl) and we can spoof CVS
+   ## using $ENV{LOGNAME}.
+   if ( ! $>  ) {
+      my $login = getlogin ;
+      if ( ( ! defined $login || ! getpwnam $login )
+         && ( ! exists $ENV{LOGNAME} || ! getpwnam $ENV{LOGNAME} )
+      ) {
+	 for ( qw( nobody guest ) ) {
+	    my $uid = getpwnam $_ ;
+	    next unless defined $uid ;
+	    ( $ENV{LOGNAME}, $> ) = ( $_, $uid ) ;
+	    last ;
+	 }
+	 $< = $> ;
+	 
+	 warn
+	    "# Setting real & eff. uids=",
+	    $>,
+	    "(",
+	    $ENV{LOGNAME},
+	    qq{) to quell "cvs: cannot commit files as 'root'"\n} ;
+      }
+   }
+
    mk_tmp_dir $options->{repo} ;
 
    run [ qw( cvs init ) ]                    or die "cvs init failed" ;
 
-   chdir $work_dir                           or die "$!: $work_dir" ;
+   mk_tmp_dir $options->{work} ;
+   chdir $options->{work}                    or die "$!: $options->{work}" ;
 
    mkdir $module, 0770                       or die "$!: $module" ;
    chdir $module                             or die "$!: $module" ;

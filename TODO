@@ -11,6 +11,9 @@ of those.
   - VCP::Dest::cvs needs to set the binary mode properly on files it
     creates and checks in
   - VCP::Source::cvs needs to deduce binary modes correctly
+  - Make test suite use an alternate port for p4d so multiple make test 
+    instances can be run in parallel
+  - Make test suite skip cvs tests like it skips p4 tests if cvs is not present.
 
 - Feature Adds
   - Need to make the transfers more transactional, so we can recover from where

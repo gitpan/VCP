@@ -27,7 +27,18 @@ my $p4_spec = "p4:$p4_options->{user}:\@$p4_options->{port}://depot/foo" ;
 
 my $incr_change ; # what change number to start incremental export at
 
+my $cvs_options ;
+my $cvs_module ;
+
 my @tests = (
+sub {
+   # init_cvs before initting p4d, since it may need to set the uid and euid.
+   # MUST SKIP IF CVS_BORKEN
+   $cvs_options = cvs_options "p4_" ;
+   $cvs_module = 'foo' ;
+   init_cvs $cvs_options, $cvs_module ;
+   ok 1 ;
+},
 sub {
    $ENV{P4USER}   = "foobar_user" ;
    $ENV{P4PORT}   = "foobar_port" ;
@@ -136,11 +147,6 @@ sub {
 sub {}, ## Two ok's in next test.
 
 sub {
-   my $cvs_options = cvs_options "p4_" ;
-   mk_tmp_dir $cvs_options->{work} ;
-
-   my $cvs_module = 'foo' ;
-   init_cvs $cvs_options, $cvs_module ;
 
    $ENV{CVSROOT} = $cvs_options->{repo};
    my $infile  = $t . "test-p4-in-0.revml" ;
