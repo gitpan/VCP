@@ -100,6 +100,7 @@ use strict ;
 
 use Carp ;
 use Getopt::Long ;
+use Fcntl qw( O_WRONLY O_CREAT ) ;
 use VCP::Debug ":debug" ;
 use Regexp::Shellish qw( :all ) ;
 use VCP::Rev ;
@@ -578,15 +579,19 @@ sub get_p4_file_labels {
 }
 
 
+my $filter_prog = <<'EOPERL' ;
+   use strict ;
+   my ( $name, $working_path ) = ( shift, shift ) ;
+   }
+EOPERL
+
+
 sub get_revs {
    my VCP::Source::p4 $self = shift ;
 
    my ( @revs ) = @_ ;
 
    return unless @revs ;
-
-   my @dispatcher_args ;
-   my @rev_specs ;
 
    for ( @revs ) {
       my VCP::Rev $r = $_ ;  ## 5.00503 doesn't have for my Foo $foo (...)
@@ -600,60 +605,76 @@ sub get_revs {
       my $denormalized_name = $self->denormalize_name( $fn ) ;
       my $rev_spec = "$denormalized_name#$rev" ;
 
-      push @dispatcher_args, $rev_spec, $wp ;
-      push @rev_specs, $rev_spec ;
+      sysopen( WP, $wp, O_CREAT | O_WRONLY )
+	 or die "$!: $wp" ;
+
+      my $re = quotemeta( $rev_spec ) . " - .* change \\d+ \\((.+)\\)";
+
+      ## TODO: look for "+x" in the (...) and pass an executable bit
+      ## through the rev structure.
+
+      $self->p4( 
+	 [ "print", $rev_spec ],
+	 ">", sub {
+	    $_ = shift ;
+            s/\A$re\r?\n//m if $re ;
+	    print WP or die "$! writing to $wp" ;
+	    $re = undef ;
+	 },
+      ) ;
+
+      close WP or die "$! closing wp" ;
    }
 
-   ## TODO: Don't filter non-text files.
-   ## TODO: Consider using a 'p4 sync' command to restore the modification
-   ## time so we can capture it.
-   my $dispatch_prog = <<'EOPERL' ;
-      use strict ;
-      my ( $name, $working_path ) = ( shift, shift ) ;
-      my $re = "info: " . quotemeta( $name ) . " - .* change \\d+ \\((.+)\\)\$";
-      my $found_header ;
-      my $found_this_header ;
-      my $header_like = '' ;
-      while (<STDIN>) {
-	 if ( defined $re && /$re/m ) {
-	    $found_header = 1 ;
-	    $found_this_header = 1 ;
-	    open( STDOUT, ">$working_path" )
-	       or die ">$working_path" ;
-	    if ( @ARGV ) {
-	       ( $name, $working_path ) = ( shift, shift ) ;
-	       $re = "info: " . quotemeta( $name ) . " - .* change \\d+ \\((.+)\\)\$";
-	       $found_this_header = 0 ;
-	       $header_like = "" ;
-	    }
-	    else {
-	       undef $re ;
-	    }
-	    next ;
-	 }
-	 die "No header found for '$name' in '$_' using qr{$re}"
-	    unless $found_header ;
-	 $header_like = $_ if ! length $header_like && m{\/\/.*#\d+ - } ;
-	 s/^text: // ;
-	 next if /^exit: \d+/ ;
-	 print ;
-      }
-
-      unshift @ARGV, ( $name, $working_path ) unless $found_this_header ;
-
-      die(
-         "Did not find ",
-         @ARGV / 2,
-         " files in p4 print output\n",
-	 ( length $header_like ? "suspect qr{$header_like} didn't match\n":()),
-         join( '', map "'$_'\n", @ARGV )
-      ) if @ARGV ;
-EOPERL
-
-   $self->p4(
-      [ "-s", "print", @rev_specs ],
-      "|", [ $^X, "-we", $dispatch_prog, @dispatcher_args ]
-   ) ;
+#   ## TODO: Don't filter non-text files.
+#   ## TODO: Consider using a 'p4 sync' command to restore the modification
+#   ## time so we can capture it.
+#   my $dispatch_prog = <<'EOPERL' ;
+#      use strict ;
+#      my ( $name, $working_path ) = ( shift, shift ) ;
+#      my $re = "info: " . quotemeta( $name ) . " - .* change \\d+ \\((.+)\\)\$";
+#      my $found_header ;
+#      my $found_this_header ;
+#      my $header_like = '' ;
+#      while (<STDIN>) {
+#	 if ( defined $re && /$re/m ) {
+#	    $found_header = 1 ;
+#	    $found_this_header = 1 ;
+#	    open( STDOUT, ">$working_path" )
+#	       or die ">$working_path" ;
+#	    if ( @ARGV ) {
+#	       ( $name, $working_path ) = ( shift, shift ) ;
+#	       $re = "info: " . quotemeta( $name ) . " - .* change \\d+ \\((.+)\\)\$";
+#	       $found_this_header = 0 ;
+#	       $header_like = "" ;
+#	    }
+#	    else {
+#	       undef $re ;
+#	    }
+#	    next ;
+#	 }
+#	 die "No header found for '$name' in '$_' using qr{$re}"
+#	    unless $found_header ;
+#	 $header_like = $_ if ! length $header_like && m{\/\/.*#\d+ - } ;
+#	 s/^text: // ;
+#	 next if /^exit: \d+/ ;
+#	 print ;
+#      }
+#
+#      unshift @ARGV, ( $name, $working_path ) unless $found_this_header ;
+#
+#      die(
+#         "Did not find ",
+#         @ARGV / 2,
+#         " files in p4 print output\n",
+#	 ( length $header_like ? "suspect qr{$header_like} didn't match\n":()),
+#         join( '', map "'$_'\n", @ARGV )
+#      ) if @ARGV ;
+#EOPERL
+#   $self->p4(
+#      [ "-s", "print", @rev_specs ],
+#      "|", [ $^X, "-we", $dispatch_prog, @dispatcher_args ]
+#   ) ;
 
    return ;
 }
@@ -711,9 +732,9 @@ possibly fields in any subclasses.
 
 Copyright 2000, Perforce Software, Inc.  All Rights Reserved.
 
-This will be licensed under a suitable license at a future date.  Until
-then, you may only use this for evaluation purposes.  Besides which, it's
-in an early alpha state, so you shouldn't depend on it anyway.
+This module and the VCP package are licensed according to the terms given in
+the file LICENSE accompanying this distribution, a copy of which is included in
+L<vcp>.
 
 =head1 AUTHOR
 

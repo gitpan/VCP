@@ -18,6 +18,7 @@ use Test ;
 use VCP::TestUtils ;
 
 my $cwd = cwd ;
+my $p4d_borken ;
 
 my %seen ;
 my @perl = ( $^X, map {
@@ -146,6 +147,11 @@ $out =~ s{<user_id>.*?</user_id>}{<user_id><!--deleted by cvs.t--></user_id>}sg 
 sub {},  ## Mult. ok()s in next sub{}.
 
 sub {
+   if ( $p4d_borken ) {
+      skip( $p4d_borken, 1, 1, $p4d_borken ) ;
+      skip( $p4d_borken, 1, 1, $p4d_borken ) ;
+      return ;
+   }
    my $type = 'cvs' ;
    my $infile  = $t . "test-$type-in-0.revml" ;
    my $outfile = $t . "test-$type-out-0-p4.revml" ;
@@ -421,15 +427,19 @@ unless ( $why_skip ) {
    system qw( cvs import -m ), "${module} import", $module, "${module}_vendor", "${module}_release"
                                              and die "cvs import failed" ;
    chdir $cwd                                or  die "$!: $cwd" ;
-   $ENV{CVSROOT} = "foobar" ;
 
-   $ENV{P4USER}   = "foobar_user" ;
-   $ENV{P4PORT}   = "foobar_port" ;
-   $ENV{P4CLIENT} = "foobar_client" ;
-   $ENV{P4PASSWD} = "foobar_passwd" ;
+   $p4d_borken = p4d_borken ;
+   unless ( $p4d_borken ) {
+      $ENV{CVSROOT} = "foobar" ;
 
-   launch_p4d $p4_options ;
-   init_p4_client $p4_options ;
+      $ENV{P4USER}   = "foobar_user" ;
+      $ENV{P4PORT}   = "foobar_port" ;
+      $ENV{P4CLIENT} = "foobar_client" ;
+      $ENV{P4PASSWD} = "foobar_passwd" ;
+
+      launch_p4d $p4_options ;
+      init_p4_client $p4_options ;
+   }
 }
 
 

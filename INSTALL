@@ -8,6 +8,9 @@ available at:
 Installing that allows XML::Parser to install, which allows
 XML::ValidWriter to install, which allows VCP to install.
 
+You will also need a p4d >= 99.2 if you want to use the p4 I/O features,
+since vcp uses the filelog -m option.
+
 VCP is all Perl code, and uses a number of other Perl modules.  Installing
 these is a bit of a pain, but CPAN will do it for you automatically.  To
 install VCP using CPAN, do

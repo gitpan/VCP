@@ -1,5 +1,34 @@
 CHANGES for vcp - Version CoPy
 
+0.091 Thu Jun  7 08:32:15 EDT 2001
+   - Fix bug in CVS log file parsing that was causing it to think it was seeing
+     all revisions as revisions of the first file it saw ("====... lines were
+     being ignored) as the first file. Reported by Matthew Attaway.
+
+0.09 Thu May 24 17:15:38 EDT 2001
+   - Debugged and beefed up the CVS log file parsing code.  It can still be
+     fooled by revision comments (the "message" field) things that mimic 
+     the output of `cvs log`, like a line beginning with the right number
+     of "-" characters, but it's more robust.
+   - Underscorify CVS tags. Reported by Matthew Attaway.
+   - Only warn about undeleted files when in debugging mode, also
+     reported by Matthew Attaway.  The warning's there because we
+     don't want to use too much disk space, but it gets in the way
+     when an exception is thrown, since the END {...} handlers kick in
+     before some (often many) the VCP::Rev objects are DESTROYed.
+
+0.08 Wed May 23 10:18:28 EDT 2001
+   - Stop using p4 print -s, it puts a newline in every 4097 characters.
+     Reported by Nick Ing-Simmons.
+   - Require p4d >= 99.2 because we need filelog's -m option. Reported
+     by Nick Ing-Simmons.  Updated t/90cvs.t, t/90p4.t, and
+     lib/VCP/TestUtils.pm to improve detection of stale p4ds.
+   - Fix a "use strict" problem in lib/VCP/TestUtils.pm, reported
+     by Nick Ing-Simmons.
+
+0.07 Tue May 22 16:07:48 EDT 2001
+   - Minnor documentation changes.
+
 0.066 Mon May 21 10:34:50 EDT 2001
    - Remove PWD from the environment when calling the p4 command, so as to
      force it to use the cwd()

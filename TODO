@@ -5,6 +5,8 @@ future feature ideas.  This file will grow to include the more important
 of those.
 
 - Bugfixes
+  - Check for p4 >= 99.2 at runtime, since filelog -m is needed
+  - Carry executable bit through (Nick Ing-Simmons)
   - Make <rev_root> and <name> escape their characters
   - VCP::Dest::cvs needs to set the binary mode properly on files it
     creates and checks in

@@ -1,17 +1,24 @@
 README for vcp - Version CoPy
 
-vcp (and the Perl module VCP.pm) is a system for copying resources under
-version control from one repository to another, possibly different,
-repository, or to/from RevML.
+vcp (and the Perl module VCP.pm) is a system for copying resources
+under version control between repositories. cvs, p4 and RevML files
+are currently supported.
+
+vcp can re-root directory hierarchies diring the transfer, and,
+using source specifications, or by filtering RevML files, subsets of
+files and revisions may be copied.
+
+Both whole-repository and incremental updates are supported.
 
 
 STATUS
 
-This code is in late alpha state.  It current supports CVS, Perforce's p4,
-and RevML sources and destinations.  It currently runs only on Unix-like
-platforms, since it relies heavily on select().  It will be ported to
-run on Windows platforms soon, or you can try it on a cygwin port of
-perl (which I have heard simulates select() rather well).
+This code is in late alpha state.  It current supports CVS,
+Perforce's p4, and RevML sources and destinations.  It currently
+runs only on Unix-like platforms, including cygwin, due to reliance
+on select().  It will be ported to run on Windows platforms soon, or
+you can try it on a cygwin port of perl (which I have heard
+simulates select() rather well).
 
 vcp is known to copy simple repositories back and forth between all
 sources and destinations included (CVS, p4, and RevML as I'm typing
@@ -25,28 +32,30 @@ the main branch in CVS, or on any branch in p4.
 
 COPYRIGHT & LICENSE
 
-Development of this utility is partially funded by Perforce.  All software
-so funded is Copyright 2000, Perforce Software, Inc.  Contributed portions
-not assigned to Perforce are Copyright to their respective creators.
-Such contributed code is clearly marked and demarcated in the source code.
+Development of this utility is partially funded by Perforce.  All software so
+funded is Copyright 2000, Perforce Software, Inc, and licensed according to the
+file LICENSE distributed with this package.
 
-Perforce has not determined the license for this code, though they have
-authorized it's publication as open source.  We will get a license hammered
-out soon, until then, you are free to read and experiment with this code,
-but not to redistribute it in any form.  This restriction will be loosened
-as soon as the appropriate license is agreed upon.
-
+Contributed portions not assigned to Perforce are Copyright to their
+respective creators.  Such contributed code is clearly marked and
+in the source code.
 
 INSTALLATION
 
-See the INSTALL file for details, but a normal install should be done by
-doing a
+See the INSTALL file for details, but a normal install should be done
+by doing a
 
    $ perl -MCPAN -eshell
    cpan> install VCP
 
-.  This convinces CPAN to do all the dirty work of fetching and installing
-required modules for you.
+.  This convinces CPAN to do all the dirty work of fetching and
+installing required modules for you.
+
+
+REQUIREMENTS
+
+If you want to use the p4 I/O features, v99.2 or later is required (vcp uses
+the filelog -m option).  Not sure about cvs.
 
 
 THINGS TO READ
@@ -60,7 +69,8 @@ or
 
    perldoc path/to/vcp
 
-.  If you are going source spelunking, a reasonable reading list might be:
+.  If you are going source spelunking, a reasonable reading list might
+be:
 
    bin/vcp
    VCP
@@ -74,19 +84,20 @@ or
    revml.dtd
    RevML::Doctype
 
-You may browse the source in Perforce's online source repository starting
-at
+You may browse the source in Perforce's online source repository
+starting at
 
    http://public.perforce.com/public/index.html
 
-I'll update this file with better links when I get the project checked in.
+I'll update this file with better links when I get the project checked
+in.
 
 
 SUPPORT
 
 1. Please read the documentation.  It's not as good as it will be, but
-it'll keep you from distracting the author(s) with trivial questions when
-they should be working on debugging and features.
+it'll keep you from distracting the author(s) with trivial questions
+when they should be working on debugging and features.
 
 2. Where the documentation is lacking, get us to clarify it.
 

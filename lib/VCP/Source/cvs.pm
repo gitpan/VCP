@@ -16,7 +16,7 @@ VCP::Source::cvs - A CVS repository source
    vcp cvs:path/... -D ">=2000-11-18 5:26:30"
                                   # All file revs newer than a date/time
 
-   ## cvs -D and -f also supported
+   ## NOTE: Unlike cvs, vcp requires spaces after option letters.
 
 =head1 DESCRIPTION
 
@@ -25,18 +25,7 @@ a local working directory and run the cvs command from within that
 directory.  This is because the "cvs log" and "cvs checkout" commands
 need to have a working directory to play in.
 
-This module in alpha.  For instance, it may be better to use a more
-cvs-like set of options to specify revision ranges.  So please don't
-be offended if the CLI changes.  Certainly labels containing '-' will
-throw us off.
-
-Note for p4 users (and other change-number or change-set oriented
-destinations): this source does not do change-number extraction /
-aggregation.  This should be done by the destination, as it is
-destination-specific.
-
-This module does sort the revisions it outputs so that such extraction
-can be less painful.  Revisions are sorted in increasing date order.
+This module in alpha.
 
 This doesn't deal with branches yet (at least not intentionally).  That will
 require a bit of Deep Thought.
@@ -81,7 +70,7 @@ a repository.
 =item --cd
 
 Used to set the CVS root directory, overriding the value of the CVSROOT
-environment vairable.  Using this and --cd it is possible to export from
+environment variable.  Using this and --cd it is possible to export from
 one CVS repository and import to another.
 
 =item --rev-root
@@ -102,7 +91,7 @@ Passed to 'cvs log' as a '-r' revision specification.
 
 WARNING: if this
 string doesn't contain a ':', you're probably doing something wrong,
-since you're not specifying a revision range.  vcp may wanr about this
+since you're not specifying a revision range.  vcp may warn about this
 in the future.
 
 This will normally only replicate files which are tagged.  This means
@@ -142,9 +131,25 @@ be ignored.
 
 =back
 
+=head1 LIMITATIONS
+
+   "What we have here is a failure to communicate!"
+       - The warden in Cool Hand Luke
+
+CVS does not try to protect itself from people checking in things that look
+like snippets of CVS log file: they go in Ok, and they come out Ok, screwing up
+the parser.
+
+So, if you come accross a repository that contains messages that look like "cvs
+log" output, this is likely to go awry.
+
+At least one cvs repository out there has multiple revisions of a single file
+with the same rev number.  The second and later revisions with the same rev
+number are ignored with a warning like "Can't add same revision twice:...".
+
 =cut
 
-$VERSION = 1 ;
+$VERSION = 1.1 ;
 
 use strict ;
 
@@ -186,6 +191,7 @@ use fields (
 			 ## which is decided on a per-file basis by looking
 			 ## at VCP::Source::is_bootstrap_mode( $file ) and
 			 ## the file's rev number (ie does it end in .1).
+   'CVS_SAW_EQUALS',     ## Set when we see the ==== lines in log file [1]
 ) ;
 
 
@@ -412,6 +418,9 @@ sub copy_revs {
       @gxme ;
    } ) ;
 
+   $self->{CVS_LOG_FILE_DATA} = {} ;
+   $self->{CVS_LOG_REV} = {} ;
+   $self->{CVS_SAW_EQUALS} = 0 ;
    $self->cvs( [
          "log",
 	 $self->rev_spec_cvs_option,
@@ -540,9 +549,6 @@ sub copy_revs {
 ###############################################################################
 
 sub parse_log_file {
-   ## This routine is Copyright 2000, Barrie Slaymaker.  It is adapted from
-   ## prior work on the Safari project.  It is licensed under at least the
-   ## GPL.
    my ( $self, $input ) = @_ ;
 
    if ( defined $input ) {
@@ -554,10 +560,6 @@ sub parse_log_file {
       $self->{CVS_LOG_CARRYOVER} .= "\n" if length $self->{CVS_LOG_CARRYOVER} ;
    }
 
-   $self->{CVS_LOG_FILE_DATA} = {} ;
-   $self->{CVS_LOG_REV} = {} ;
-   local $_ ;
-
    my $store_rev = sub {
 #      my ( $is_oldest ) = @_ ;
       return unless keys %{$self->{CVS_LOG_REV}} ;
@@ -567,6 +569,7 @@ sub parse_log_file {
 
       $self->{CVS_LOG_REV}->{MESSAGE} =~ s/\r\n|\n\r/\n/g ;
 
+#debug map "$_ => $self->{CVS_LOG_FILE_DATA}->{$_},", sort keys %{$self->{CVS_LOG_FILE_DATA}} ;
       $self->_add_rev( $self->{CVS_LOG_FILE_DATA}, $self->{CVS_LOG_REV} ) ;
 
 #      if ( $is_oldest ) {
@@ -588,29 +591,50 @@ sub parse_log_file {
       $self->{CVS_LOG_REV} = {} ;
    } ;
 
+   local $_ ;
+
    ## DOS, Unix, Mac lineends spoken here.
    while ( $self->{CVS_LOG_CARRYOVER} =~ s/^(.*(?:\r\n|\n\r|\n))// ) {
       $_ = $1 ;
 
+      ## [1] See bottom of file for a footnote explaining this delaying of 
+      ## clearing CVS_LOG_FILE_DATA and CVS_LOG_STATE until we see
+      ## a ========= line followed by something other than a -----------
+      ## line.
+      ## TODO: Move to a state machine design, hoping that all versions
+      ## of CVS emit similar enough output to not trip it up.
+
+      ## TODO: BUG: Turns out that some CVS-philes like to put text
+      ## snippets in their revision messages that mimic the equals lines
+      ## and dash lines that CVS uses for delimiters!!
+
    PLEASE_TRY_AGAIN:
-      if ( /^====================/ ) {
+      if ( /^===========================================================*$/ ) {
          $store_rev->() ;# "is oldest" ) ;
-	 $self->{CVS_LOG_FILE_DATA} = {} ;
-	 $self->{CVS_LOG_STATE} = '' ;
+	 $self->{CVS_SAW_EQUALS} = 1 ;
 	 next ;
       }
 
-      if ( /^--------------------/ ) {
-         $store_rev->() ;
+      if ( /^----------------------------*$/ ) {
+         $store_rev->() unless $self->{CVS_SAW_EQUALS} ;
+	 $self->{CVS_SAW_EQUALS} = 0 ;
 	 $self->{CVS_LOG_STATE} = 'rev' ;
 	 next ;
+      }
+
+      if ( $self->{CVS_SAW_EQUALS} ) {
+	 $self->{CVS_LOG_FILE_DATA} = {} ;
+	 $self->{CVS_LOG_STATE} = '' ;
+	 $self->{CVS_SAW_EQUALS} = 0 ;
       }
 
       unless ( $self->{CVS_LOG_STATE} ) {
 	 if (
 	    /^(RCS file|Working file|head|branch|locks|access list|keyword substitution):\s*(.*)/i
 	 ) {
+#warn uc( (split /\s+/, $1 )[0] ), "/", $1, ": ", $2, "\n" ;
 	    $self->{CVS_LOG_FILE_DATA}->{uc( (split /\s+/, $1 )[0] )} = $2 ;
+#$DB::single = 1 if /keyword/ && $self->{CVS_LOG_FILE_DATA}->{WORKING} =~ /Makefile/ ;
 	 }
 	 elsif ( /^total revisions:\s*([^;]*)/i ) {
 	    $self->{CVS_LOG_FILE_DATA}->{TOTAL} = $1 ;
@@ -714,9 +738,12 @@ sub _add_rev {
    my ( $file_data, $rev_data, $is_base_rev ) = @_ ;
 
    my $norm_name = $self->normalize_name( $file_data->{WORKING} ) ;
+
    my $action = $rev_data->{STATE} eq "dead" ? "delete" : "edit" ;
 
    my $type = $file_data->{KEYWORD} =~ /[o|b]/ ? "binary" : "text" ;
+
+#debug map "$_ => $rev_data->{$_}, ", sort keys %{$rev_data} ;
 
    my VCP::Rev $r = VCP::Rev->new(
       source_name => $file_data->{WORKING},
@@ -736,7 +763,17 @@ sub _add_rev {
    ) ;
 
    $self->{CVS_NAME_REP_NAME}->{$file_data->{WORKING}} = $file_data->{RCS} ;
-   $self->revs->add( $r ) ;
+   eval {
+      $self->revs->add( $r ) ;
+   } ;
+   if ( $@ ) {
+      if ( $@ =~ /Can't add same revision twice/ ) {
+         warn $@ ;
+      }
+      else {
+         die $@ ;
+      }
+   }
 }
 
 
@@ -747,18 +784,57 @@ possibly fields in any subclasses.
 
 =head1 COPYRIGHT
 
-Mostly copyright 2000, Perforce Software, Inc.  All Rights Reserved,
-except for marked portions (ie the CVS log file parsing), which are
-Copyright 2000, Barrie Slaymaker, Inc.  All Rights Reserved.
+Copyright 2000, Perforce Software, Inc.  All Rights Reserved.
 
-This will be licensed under a suitable license at a future date.  Until
-then, you may only use this for evaluation purposes.  Besides which, it's
-in an early alpha state, so you shouldn't depend on it anyway.
+This module and the VCP package are licensed according to the terms given in
+the file LICENSE accompanying this distribution, a copy of which is included in
+L<vcp>.
 
 =head1 AUTHOR
 
 Barrie Slaymaker <barries@slaysys.com>
 
 =cut
+
+## FOOTNOTES:
+# [1] :pserver:guest@cvs.tigris.org:/cvs hass some goofiness like:
+#----------------------------
+#revision 1.12
+#date: 2000/09/05 22:37:42;  author: thom;  state: Exp;  lines: +8 -4
+#
+#merge revision history for cvspatches/root/log_accum.in
+#----------------------------
+#revision 1.11
+#date: 2000/08/30 01:29:38;  author: kfogel;  state: Exp;  lines: +8 -4
+#(derive_subject_from_changes_file): use \t to represent tab
+#characters, not the incorrect \i.
+#=============================================================================
+#----------------------------
+#revision 1.11
+#date: 2000/09/05 22:37:32;  author: thom;  state: Exp;  lines: +3 -3
+#
+#merge revision history for cvspatches/root/log_accum.in
+#----------------------------
+#revision 1.10
+#date: 2000/07/29 01:44:06;  author: kfogel;  state: Exp;  lines: +3 -3
+#Change all "Tigris" ==> "Helm" and "tigris" ==> helm", as per Daniel
+#Rall's email about how the tigris path is probably obsolete.
+#=============================================================================
+#----------------------------
+#revision 1.10
+#date: 2000/09/05 22:37:23;  author: thom;  state: Exp;  lines: +22 -19
+#
+#merge revision history for cvspatches/root/log_accum.in
+#----------------------------
+#revision 1.9
+#date: 2000/07/29 01:12:26;  author: kfogel;  state: Exp;  lines: +22 -19
+#tweak derive_subject_from_changes_file()
+#=============================================================================
+#----------------------------
+#revision 1.9
+#date: 2000/09/05 22:37:13;  author: thom;  state: Exp;  lines: +33 -3
+#
+#merge revision history for cvspatches/root/log_accum.in
+#
 
 1

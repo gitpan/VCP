@@ -8,7 +8,7 @@ vcp - Copy versions of files between repositories and/or RevML
 
    vcp [vcp_opts] src[:files] [src_opts] [dest:[<location>]] [dest_opts]
 
-   vcp cvs:/mymodule/... -r1.1: p4://depot/mymodule
+   vcp cvs:/mymodule/... -r 1.1: p4://depot/mymodule
    vcp p4://depot/mainbranch/...@100-105 revml:
    vcp help
    vcp revml: --dtd <foo.dtd> --save_dtd
@@ -37,7 +37,8 @@ The general syntax of the vcp command line is:
 
    vcp [vcp_opts] <source> [src_opts] <dest> [dest_opts]
 
-where C<E<lt>sourceE<gt>> and C<E<lt>destE<gt>> look like
+where C<E<lt>sourceE<gt>> and C<E<lt>destE<gt>> are composed of fields
+separated by delimiters like so:
 
    scheme:user(view):password@server:filespec
 
@@ -46,9 +47,10 @@ where
    scheme is a repository type ('p4', 'cvs', 'revml'), or special
       command ('help', 'save_dtd').
 
-   user, view, and password are settings required
-      for repository access. CVS does not use (view).  For p4,
-      (view) is the client setting (P4CLIENT or -c option).
+   user, view, and password are optional values, one or more of
+      which may be required for repository access.  CVS does not
+      use (view).  For p4, (view) is the client setting
+      (P4CLIENT or -c option).
 
    server is the repository spec, CVSROOT for CVS or P4PORT for p4.
 
@@ -56,30 +58,49 @@ where
       much as possible, this spec is similar to the native filespecs
       used by the repository indicated by the scheme.
 
-Filespecs are often omitted from the destination, in which case
-the colon is also optional.
+Most C<E<lt>sourceE<gt>> and C<E<lt>destE<gt>> specs will omit one or more of
+the fields.  For instance, Filespecs or passwords are often omitted from the
+destination, in which case the leading colons for these fields are also
+optional. If no user, view, or password is supplied, the "@" is optional.
+
+That's a bit confusing, here are some examples of stripped-down specs:
+
+   cvs:server:/foo
+   p4:user@server://depot/foo/...
+   p4:user:password@public.perforce.com:1666://depot/foo/...
+
+Options and formats for of individual schemes can be found in the relevant
+manpages:
+
+L<VCP::Source::cvs>, L<VCP::Source::p4>, L<VCP::Source::revml>,
+L<VCP::Dest::cvs>, L<VCP::Dest::p4>, L<VCP::Dest::revml>.
+
+At some point, the help command will be extended to be able to display them.
 
 =head2 OPTIONS
 
-All general options to vcp must precede the command.  Command-specific
-options must come after the command.  Command specific options are
-documented in the appropriate VCP::Source::... or VCP::Dest::...
-man pages for now.  At some point, the help command will be extended
-to be able to display them.
+All general options to vcp must precede the first scheme.  Scheme-specific
+options must come after the affected source or destination spec and before the
+next one.
 
 =over
 
 =item --debug [spec], -d [spec]
 
-Enables display of debugging information.  Default is to enable
-all debugging if no spec is provided.  A debug spec is part or all of
-a module name like C<source::revml> or a shell-like regular expression to be
-compared to a module name.  All are compared case insensitively.
+Enables display of debugging information.  Default is to enable all debugging
+if no spec is provided.  A debug spec is part or all of a module name like
+C<source::revml> or a shell-like regular expression to be compared to a module
+name.  All are compared case insensitively. The most general,
+show-me-everything debug option is:
 
-Any debug specs you provide that did not happen to cause any messages
-to be emitted by the time vcp exits.  vcp will also list
-all of the internal names that might have matched but didn't to 
-give you a clue as to what specs might be useful.
+   -d "*"
+
+The quotations are needed to slip the "*" past most command shells.
+
+Any debug specs that don't match anything during a run are printed out
+when vcp exits in order to help identify mispelled patterns.  vcp will also list
+all of the internal names that didn't match during a run to
+give clues as to what specs might be useful.
 
 The special name 'what' is guaranteed to not match anything, so you can
 do
@@ -88,37 +109,35 @@ do
 
 to see the list of names that might be useful for the arguments '...' .
 
-This list may change from run to run based on what modules asked to see
-if they should emit debugging information.
-
 You may use multiple
 C<-d> options or provide a comma separated list to enable debugging
-within that module.
+within that module. Do not start a pattern with a "-".
 
-Debugging messages are emitted to stderr.
+Debugging messages are emitted to stderr. See L</VCPDEBUG> for how to specify
+debug options in the environment.
 
 =item --help, -h, -?
 
-These are all equivalent to C<p4 help>.
+These are all equivalent to C<vcp help>.
 
 =back
 
 =head1 ARGUMENTS
 
-Commands are either built in to vcp or are the names of repository sources.
-
-These are brief descrioptions, see the rest of this page for more details
-on the more complicated ones.
+There are two special schemes, "help" and "save_dtd".
 
 =over
 
 =item help
 
-Displays the full help text.
+Displays the full help text.  This will be extended to allow the retrieval of
+all of the manpages provided with VCP.
 
 =item save_dtd [<how>]
 
-Outputs the DTD to stdout if <version> is C<->, or to a file named like
+This is primarily for vcp maintainers.
+
+Outputs the DTD to stdout if <how> is C<->, or to a file named like
 v1_000.pm if <how> looks like a version number, or in a module named
 after <how> if <how> contains '::'.  This file is placed in
 ./lib/RevML/DTD or ./RevML/DTD or ./, whichever is found first.  No
@@ -137,7 +156,8 @@ command line debugging.  The VCPDEBUG variable acts just like a leading
 
    VCPDEBUG=main,p4
 
-(see L</--debug, -d> for more info).
+(see L</--debug, -d> for more info).  This is useful when VCP is embedded in
+another application, like a makefile or a test suite.
 
 =cut
 
@@ -413,11 +433,44 @@ Barrie Slaymaker <barries@slaysys.com>
 
 =head1 COPYRIGHT
 
-Copyright 2000, Perforce Software, Inc.  All Rights Reserved
+This program is licensed under the provisions of the BSD license:
 
-This will be licensed under a suitable license at a future date.  Until
-then, you may use this for evaluation purposes.  Besides which, it's
-alpha code, so you shouldn't depend on it anyway.
+      Copyright (c) 2000, 2001, Perforce Software, Inc.
+      All rights reserved.
+
+      Redistribution and use in source and binary forms, with or without
+      modification, are permitted provided that the following conditions are
+      met:
+
+	   - Redistributions of source code must retain the above copyright
+	     notice, this list of conditions and the following disclaimer. 
+	   - Redistributions in binary form must reproduce the above copyright
+	     notice, this list of conditions and the following disclaimer in
+	     the documentation and/or other materials provided with the
+	     distribution. 
+	   - Neither the name of the Perforce Software, Inc.nor the names of
+	     its contributors may be used to endorse or promote products
+	     derived from this software without specific prior written
+	     permission. 
+
+      THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS
+      AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
+      WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+      WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+      PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL
+      THE REGENTS OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT,
+      INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+      CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+      PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF
+      USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+      HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+      WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+      NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
+      USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY
+      OF SUCH DAMAGE.
+
+This notice is also included in the LICENSE file accompanying this
+distribution, which also must be retained in redistributions.
 
 =cut
 

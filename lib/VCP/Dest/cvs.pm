@@ -251,11 +251,17 @@ sub handle_rev {
       ## TODO: Batch files in to the rtag command, esp. for change number tags,
       ## for performance's sake.
       ## TODO: batch tags, too.
-      $self->tag( "r_" . $r->rev_id, $fn ) ;
-      $self->tag( "ch_" . $r->change_id, $fn )
-	 if defined $r->change_id ;
+      my @tags = map {
+         s/^([^a-zA-Z])/tag_$1/ ;
+	 s/\W/_/g ;
+	 $_ ;
+      }(
+	 defined $r->rev_id    ? "r_" . $r->rev_id     : (),
+         defined $r->change_id ? "ch_" . $r->change_id : (),
+	 $r->labels,
+      ) ;
 
-      $self->tag( $_, $fn ) for $r->labels ;
+      $self->tag( $_, $fn ) for @tags ;
       ## TODO: Provide command line options for user-defined tag prefixes
    }
 }
@@ -278,9 +284,9 @@ possibly fields in any subclasses.
 
 Copyright 2000, Perforce Software, Inc.  All Rights Reserved.
 
-This will be licensed under a suitable license at a future date.  Until
-then, you may only use this for evaluation purposes.  Besides which, it's
-in an early alpha state, so you shouldn't depend on it anyway.
+This module and the VCP package are licensed according to the terms given in
+the file LICENSE accompanying this distribution, a copy of which is included in
+L<vcp>.
 
 =head1 AUTHOR
 

@@ -371,9 +371,11 @@ plan tests => scalar @tests ;
 
 my $why_skip ;
 
+my $p4d_borken = p4d_borken ;
+
 $why_skip .= "# '$vcp' not found\n"    unless -x $vcp ;
 $why_skip .= "p4 command not found\n"  unless ( `p4 -V`  || 0 ) =~ /^Perforce/ ;
-$why_skip .= "p4d command not found\n" unless ( `p4d -V` || 0 ) =~ /^Perforce/ ;
+$why_skip .= "$p4d_borken\n" if $p4d_borken ;
 
 unless ( $why_skip ) {
    ## Give vcp ... p4:... a repository to work with.  Note that it does not

@@ -91,9 +91,11 @@ BEGIN {
 my %files_to_delete ;
 
 END {
-   for ( sort keys %files_to_delete ) {
-      if ( -e $_ ) {
-         warn "$_ not deleted" ;
+   if ( debugging ) {
+      for ( sort keys %files_to_delete ) {
+	 if ( -e $_ ) {
+	    warn "$_ not deleted" ;
+	 }
       }
    }
 }
@@ -281,9 +283,9 @@ possibly fields in any subclasses.
 
 Copyright 2000, Perforce Software, Inc.  All Rights Reserved.
 
-This will be licensed under a suitable license at a future date.  Until
-then, you may only use this for evaluation purposes.  Besides which, it's
-in an early alpha state, so you shouldn't depend on it anyway.
+This module and the VCP package are licensed according to the terms given in
+the file LICENSE accompanying this distribution, a copy of which is included in
+L<vcp>.
 
 =head1 AUTHOR
 

@@ -8,7 +8,7 @@ VCP::TestUtils - support routines for VCP testing
 
 use Exporter ;
 
-@EXPORT = qw( p4_options launch_p4d init_p4_client ) ;
+@EXPORT = qw( p4_options launch_p4d init_p4_client p4d_borken ) ;
 @ISA = qw( Exporter ) ;
 
 use strict ;
@@ -30,9 +30,26 @@ sub p4_options {
    } ;
 }
 
+
+sub p4d_borken {
+   my $p4dV = `p4d -V` || 0 ;
+   return "p4d not found" unless $p4dV ;
+
+   my ( $p4d_version ) = $p4dV =~ m{^Rev[^/]*/[^/]*/([^/]*)}m ;
+
+   my $min_version = 99.2 ;
+   return "p4d version too old, need at least $min_version"
+       unless $p4d_version >= $min_version ;
+   return "" ;
+}
+
 sub launch_p4d {
    my $options = pop ;
    croak "No options passed" unless $options && %$options ;
+   {
+      my $borken = p4d_borken ;
+      croak $borken if $borken ;
+   }
    ## Ok, this is wierd: we need to fork & run p4d in foreground mode so that
    ## we can capture it's PID and kill it later.  There doesn't seem to be
    ## the equivalent of a 'p4d.pid' file. If we let it daemonize, then I
@@ -49,6 +66,7 @@ sub launch_p4d {
    ## be seen.
    select( undef, undef, undef, 0.250 ) ;
    END {
+      return unless defined $p4d_pid ;
       kill 'INT',  $p4d_pid or die "$! $p4d_pid" ;
       my $t0 = time ;
       my $dead_child ;
@@ -86,8 +104,7 @@ sub init_p4_client {
    die "$p4 client -o returned ", $? >> 8, "\n" if $? ;
    $client_desc =~ s(^Root.*)(Root:\t$options->{work})m ;
    $client_desc =~ s(^View.*)(View:\n\t//depot/...\t//$options->{client}/...\n)ms ;
-   open(
-      P4,
+   open( P4,
       "| $p4 client -i"
    ) or die "$! $p4 client -i" ;
    print P4 $client_desc ;
@@ -96,3 +113,15 @@ sub init_p4_client {
       die qq{$! closing "| p4 client -i"} ;
    }
 }
+
+=head1 COPYRIGHT
+
+Copyright 2000, Perforce Software, Inc.  All Rights Reserved.
+
+This module and the VCP package are licensed according to the terms given in
+the file LICENSE accompanying this distribution, a copy of which is included in
+L<vcp>.
+
+=cut
+
+1 ;
