@@ -118,7 +118,7 @@ sub get {
 =item sort
 
    # Using a custom sort function:
-   $revs->sort( sub { my ( $rev_a, $rev_b ) = @_ ; ... } ) ;
+   $revs->sort( sub { ... } ) ;
 
 Note: Don't use $a and $b in your sort function.  They're package globals
 and that's not your package.  See L<VCP::Dest/rev_cmp_sub> for more details.
@@ -130,7 +130,7 @@ sub sort {
 
    my ( $sort_func ) = @_ ;
 
-   @{$self->{REVS}} = sort { $sort_func->( $a, $b ) } @{$self->{REVS}} ;
+   @{$self->{REVS}} = sort $sort_func, @{$self->{REVS}} ;
 }
 
 

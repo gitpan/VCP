@@ -38,11 +38,12 @@ use fields (
    'COMMENT',    ## The comment/message for this rev.
    'ACTION',     ## What was done ('edit', 'move', 'delete', etc.)
    'BASE_REV_ID',
-## Internal fields: used by VCP::* modules, but no present in RevML files.
+## Internal fields: used by VCP::* modules, but not present in RevML files.
    'WORK_PATH',  ## Where to find the revision on the local filesys
    'DEST_WORK_PATH', ## Where to find the rev on local fs if it was backfilled
    'SOURCE_NAME',  ## The non-normalized name of the file, meaningful only to
                    ## a specific VCP::Source
+   'SORT_KEY',   ## An ARRAY of ARRAYs of the fields and segments to sort by
 ) ;
 
 BEGIN {

@@ -86,7 +86,7 @@ sub new {
    my $class = shift ;
    $class = ref $class || $class ;
 
-   my VCP::Dest::p4 $self = $class->VCP::Plugin::new( @_ ) ;
+   my VCP::Dest::p4 $self = $class->SUPER::new( @_ ) ;
 
    ## Parse the options
    my ( $spec, $options ) = @_ ;
@@ -95,10 +95,8 @@ sub new {
 
    my $files = $self->repo_filespec ;
 
-   $self->deduce_rev_root( $files )
-      if defined $files && length $files ;
-
-   $self->{P4_PENDING} = [] ;
+   ## No need to deduce the rev_root, we let p4 do that by setting the
+   ## client view to the destination path the user specified.
 
    GetOptions( "ArGhOpTioN" => \"" ) or $self->usage_and_exit ; # No options!
 
@@ -108,9 +106,39 @@ sub new {
 }
 
 
-sub denormalize_name {
+sub checkout_file {
    my VCP::Dest::p4 $self = shift ;
-   return '//' . $self->SUPER::denormalize_name( @_ ) ;
+   my VCP::Rev $r ;
+   ( $r ) = @_ ;
+
+confess unless defined $self && defined $self->header ;
+
+   debug "vcp: retrieving '", $r->as_string, "' from p4 dest repo"
+      if debugging $self ;
+
+   ## The rev_root was put in the client view, p4 will "denormalize"
+   ## the name for us.
+   my $work_path = $self->work_path( $r->name ) ;
+   debug "vcp: work_path '$work_path'" if debugging $self ;
+
+   my VCP::Rev $saw = $self->seen( $r ) ;
+
+   die "Can't backfill already seen file '", $r->name, "'" if $saw ;
+
+   my ( undef, $work_dir ) = fileparse( $work_path ) ;
+   $self->mkpdir( $work_path ) unless -d $work_dir ;
+
+   my $tag = "r_" . $r->rev_id ;
+   $tag =~ s/\W+/_/g ;
+
+   ## The -f forces p4 to sync even if it thinks it doesn't have to.  It's
+   ## not in there for any known reason, just being conservative.
+   $self->p4( ['sync', '-f', $r->name . "\@$tag" ] ) ;
+   die "'$work_path' not created in backfill" unless -e $work_path ;
+
+   return $work_path ;
+
+   return 1 ;
 }
 
 
@@ -121,40 +149,18 @@ sub backfill {
 
 confess unless defined $self && defined $self->header ;
 
-   if ( $self->none_seen ) {
-      $self->rev_root( $self->header->{rev_root} )
-         unless defined $self->rev_root ;
-   }
-
-   my $fn = $self->denormalize_name( $r->name ) ;
-   ## The depot name was handled by the client view.
-   $fn =~ s{^//[^/]+/}{} ;
-   debug "vcp: backfilling '$fn', rev ", $r->rev_id if debugging $self ;
-
-   my $work_path = $self->work_path( $fn ) ;
-   debug "vcp: work_path '$work_path'" if debugging $self ;
-
-   my VCP::Rev $saw = $self->seen( $r ) ;
-
-   die "Can't backfill already seen file '", $r->name, "'" if $saw ;
-
-   my ( undef, $work_dir ) = fileparse( $work_path ) ;
-   unless ( -d $work_dir ) {
-      $self->mkpdir( $work_path ) ;
-      ( undef, $work_dir ) = fileparse( $fn ) ;
-   }
-
-   my $tag = "r_" . $r->rev_id ;
-   $tag =~ s/\W+/_/g ;
-
-   ## The -f forces p4 to sync even if it thinks it doesn't have to.  It's
-   ## not in there for any known reason, just being conservative.
-   $self->p4( ['sync', '-f', "$fn\@$tag" ] ) ;
-   die "'$work_path' not created in backfill" unless -e $work_path ;
-
-   $r->work_path( $work_path ) ;
+   $r->work_path( $self->checkout_file( $r ) ) ;
 
    return 1 ;
+}
+
+
+sub handle_header {
+   my VCP::Dest::p4 $self = shift ;
+   $self->{P4_PENDING}        = [] ;
+   $self->{P4_PREV_COMMENT}   = undef ;
+   $self->{P4_PREV_CHANGE_ID} = undef ;
+   $self->SUPER::handle_header( @_ ) ;
 }
 
 
@@ -164,11 +170,6 @@ sub handle_rev {
    my VCP::Rev $r ;
    ( $r ) = @_ ;
 debug "vcp: handle_rev got $r ", $r->name if debugging $self ;
-
-   if ( $self->none_seen ) {
-      $self->rev_root( $self->header->{rev_root} )
-         unless defined $self->rev_root ;
-   }
 
    if ( 
       ( @{$self->{P4_PENDING}} || $self->{P4_DELETES_PENDING} )
@@ -192,7 +193,12 @@ debug "vcp: handle_rev got $r ", $r->name if debugging $self ;
       $self->submit ;
    }
    
+   $self->compare_base_revs( $r )
+      if $r->is_base_rev && defined $r->work_path ;
+
    my VCP::Rev $saw = $self->seen( $r ) ;
+
+   return if $r->is_base_rev ;
 
    my $fn = $r->name ;
    debug "vcp: importing '", $r->name, "' as '$fn'" if debugging $self ;
@@ -240,6 +246,7 @@ debug "vcp: handle_rev got $r ", $r->name if debugging $self ;
 	 ## New file.
       }
 
+      ## TODO: Provide command line options for user-defined tag prefixes
       my $tag = "r_" . $r->rev_id ;
       $tag =~ s/\W+/_/g ;
       $r->add_label( $tag ) ;
@@ -249,15 +256,11 @@ debug "vcp: handle_rev got $r ", $r->name if debugging $self ;
 	 $r->add_label( $tag ) ;
       }
 
-      ## TODO: Provide command line options for user-defined tag prefixes
 debug "vcp: saving off $r ", $r->name, " in PENDING" if debugging $self ;
       push @{$self->{P4_PENDING}}, $r ;
    }
 
    $self->{P4_PREV_CHANGE_ID} = $r->change_id ;
-debug "vcp: done importing '$fn'" if debugging $self ;
-debug "vcp: cleaning up $saw ", $saw->name, " in PENDING" if $saw && debugging $self ;
-
    $self->{P4_PREV_COMMENT} = $r->comment ;
 }
 
@@ -265,7 +268,9 @@ debug "vcp: cleaning up $saw ", $saw->name, " in PENDING" if $saw && debugging $
 sub handle_footer {
    my VCP::Dest::p4 $self = shift ;
 
-   $self->submit if @{$self->{P4_PENDING}} || $self->{P4_DELETES_PENDING} ;
+   $self->submit
+       if ( $self->{P4_PENDING} && @{$self->{P4_PENDING}} )
+          || $self->{P4_DELETES_PENDING} ;
    $self->SUPER::handle_footer ;
 }
 
@@ -286,10 +291,15 @@ sub submit {
 	 }
       }
 
-      my @f = reverse( (localtime $max_time)[0..5] ) ;
-      $f[0] += 1900 ;
-      ++$f[1] ; ## Day of month needs to be 1..12
-      $max_time = sprintf "%04d/%02d/%02d %02d:%02d:%02d", @f ;
+      if ( defined $max_time ) {
+	 my @f = reverse( (localtime $max_time)[0..5] ) ;
+	 $f[0] += 1900 ;
+	 ++$f[1] ; ## Day of month needs to be 1..12
+	 $max_time = sprintf "%04d/%02d/%02d %02d:%02d:%02d", @f ;
+      }
+      elsif ( debugging $self ) {
+         debug "No max_time found" ;
+      }
    }
 
    my $description = join( "\n", keys %comments ) ;

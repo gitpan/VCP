@@ -28,13 +28,39 @@ use vars qw( $VERSION @ISA @EXPORT_OK %EXPORT_TAGS ) ;
 use Exporter ;
 
 @ISA = qw( Exporter ) ;
-@EXPORT_OK = qw( debug enable_debug disable_debug debugging ) ;
+@EXPORT_OK = qw(
+   debug
+   enable_debug
+   disable_debug
+   debugging
+   explicitly_debugging
+) ;
 %EXPORT_TAGS = (
    'all'   => \@EXPORT_OK,
    'debug' => \@EXPORT_OK,
 ) ;
 
 $VERSION = 0.1 ;
+
+# TODO:
+#=item use
+#=item import
+#
+#In addition to all of the routines and tags that C<use> and C<import> normally
+#take (see above), you may also pass in pairwise debugging definitions like
+#so:
+#
+#   use VCP::debug (
+#      ":all",
+#      DEBUGGING_FOO => "foo,bar",
+#   ) ;
+#
+#Any all caps export import requests are created as subroutines that may well be
+#optimized away at compile time if "enable_debugging" has not been called. This
+#requires a conspiracy between the author of a module and the author of the main
+#program to call enable_debugging I<before> C<use>ing any modules that leverage
+#this feature, otherwise compile-time optimizations won't occur.
+#
 
 =item debug
 
@@ -93,12 +119,12 @@ sub debug_some {
 
 =item debugging
 
-   debugging ;
+   debug "blah" if debugging ;
 
 Returns TRUE if the caller's module is being debugged
 
-   debugging $self ;
-   debugging $other, $self ; ## ORs the arguments together
+   debug "blah" if debugging $self ;
+   debug "blah" if debugging $other, $self ; ## ORs the arguments together
 
 Returns TRUE if any of the arguments are being debugged.  Plain
 strings can be passed or blessed references.
@@ -135,6 +161,8 @@ sub debugging {
 	       $debugging{$where} = 1 ;
 	       $used_specs{$spec} = 1 ;
 	       $result = 1 ;
+	       ## no last: we want to build up %used_specs.  There
+	       ## aren't usually many specs anyway.
 	    }
 	    else {
 # print STDERR "   ! /$spec/\n" ;
@@ -143,6 +171,67 @@ sub debugging {
       }
 # print STDERR "$where ", $debugging{$where} ? 'yes' : 'no', "\n" ;
       return 1 if $debugging{$where} ;
+   }
+
+   return $result ;
+}
+
+=item explicitly_debugging
+
+   debug "blah" if explicitly_debugging ;
+
+Returns TRUE if the caller's module is being debugged by a literal match
+instead of a pattern match.  This is used when debugging output would normally
+be congested with too much crap from a particular subsystem when using a
+wildcard debug spec (like ".*"), but you want the ability to turn on debugging
+for that subsystem:
+
+   debug "blah" if explicitly_debugging "VCP::Dest::sort" ;
+
+requires an explicit C<VCP::Dest::sort> to be given in the debug specs.
+
+   debug "blah" if explicitly_debugging $self ;
+   debug "blah" if explicitly_debugging $other, $self ; ## ORs the args
+
+Returns TRUE if any of the arguments are being debugged.  Plain
+strings can be passed or blessed references.
+
+=cut
+
+my %explicitly_debugging ;
+
+sub explicitly_debugging {
+   return undef unless @debug_specs ;
+
+   my $result ;
+   my @missed ;
+   for my $where ( @_ ? map ref $_ || $_, @_ : scalar caller ) {
+      if ( ! exists $explicitly_debugging{$where} ) {
+# print STDERR "missed $where\n" ;
+	 ## If this is the first miss, then these may not have been reported.
+	 _report_specs unless $reported_specs ;
+
+	 ## We go ahead and evaluate all specs instead of returning when the
+	 ## first is found so that we can set $used_specs for all specs that
+	 ## match.
+	 $explicitly_debugging{$where} = 0 ;
+	 for my $spec ( @debug_specs ) {
+	    next if $spec eq '##NEVER_MATCH##' ;
+# print STDERR "   /$spec/:\n" ;
+	    if ( lc $where eq lc $spec ) {
+	       $explicitly_debugging{$where} = 1 ;
+	       $used_specs{$spec} = 1 ;
+	       $result = 1 ;
+	       ## no last: we want to build up %used_specs.  There
+	       ## aren't usually many specs anyway.
+	    }
+	    else {
+# print STDERR "   ! /$spec/\n" ;
+            }
+	 }
+      }
+# print STDERR "$where ", $debugging{$where} ? 'yes' : 'no', "\n" ;
+      return 1 if $explicitly_debugging{$where} ;
    }
 
    return $result ;

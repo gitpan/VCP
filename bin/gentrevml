@@ -83,7 +83,7 @@ if ( $debug ) {
 ##
 ## BUILD  THE MANIFEST
 ##
-my @files ;
+my @file_names ;
 ## Put @files in alpha order.  p4 likes to output in alpha order, and this
 ## makes comparing p4->revml output to revml->p4 input easier.
 for my $main (
@@ -94,11 +94,11 @@ for my $main (
       for my $file    ( qw( f1 f2 f3 f4 ) ) {
 	 my $fn = "$main/$file" ;
 	 next if $fn eq "del/f1" ; # Can't delete in change 1
-	 push @files, $fn ;
+	 push @file_names, $fn ;
       }
    }
    else {
-      push @files, $main ;
+      push @file_names, $main ;
    }
 }
 
@@ -132,7 +132,12 @@ my $binary_counter = 0 ;
 
    for my $change_num ( 1..6 ) {
       print STDERR "concocting \@$change_num:\n" if $debug ;
-      for my $name ( @files ) {
+      ## We do the file names in sorted order because going in and out of
+      ## some repositories like CVS folds all timestamps in a change to
+      ## all be the same time (the cvs commit sets the timestamp), and
+      ## we want the revml that comes out to be in the same order
+      ## as the revml that went in.
+      for my $name ( sort @file_names ) {
 	 next
 	    if (
 	       defined $created_change_num{$name}
@@ -294,16 +299,46 @@ my %prev ;
 # TODO: We should also see what happens when dest no rev_root is specified.
 rev_root "foo/bar/bah" ;
 
-my $is_first = 1 ;
-
 ## Note the overlapping range here.  Batch 1 (0 or 1) needs to have a digest
 ## of the rev _before_ the start of the batch unless it's in bootstrap mode.
-for my $change_num ( ( ! $batch ) ? (1..3) : $bootstrap ? (4..6) : (3..6) ) {
-   print STDERR "emitting \@$change_num:\n" if $debug ;
+my @change_nums = (
+   ( ! $batch )
+      ? (1..3)
+   : $bootstrap
+      ? (4..6)
+      : (3..6)
+) ;
 
-   my $digest_mode = $is_first && $batch && ! $bootstrap ;
+## Build @files from @changes.  An older version built revml in change number
+## order, but we now built in filename, change number order to make sorting
+## of the output of vcp tests in to a predictable order possible.  This is
+## because cvs->revml does not result in predictable revml order, so
+## all the tests generate revml in name,rev order.
+my %revs_by_name ;
 
-   for my $r ( @{$changes[$change_num]} ) {
+for my $change_num ( @change_nums ) {
+   for my $rev ( @{$changes[$change_num]} ) {
+      push @{$revs_by_name{$rev->{name}}}, $rev ;
+   }
+}
+
+my @sorted_rev_names = sort {
+   my @a = split "/", $a ;
+   my @b = split "/", $b ;
+   while ( @a && @b ) {
+      my $result = shift( @a ) cmp shift( @b ) ;
+      return $result if $result ;
+   }
+   return @a <=> @b ;
+} keys %revs_by_name ;
+
+for my $rev_name ( @sorted_rev_names ) {
+   print STDERR "emitting $rev_name:\n" if $debug ;
+
+   for my $r ( @{$revs_by_name{$rev_name}} ) {
+      my $change_num = $r->{change_id} ;
+      my $is_first = $change_num eq $change_nums[0] ;
+      my $digest_mode = $is_first && $batch && ! $bootstrap ;
 
       next if ( $is_first
 	 && ( ! $batch || $digest_mode )
@@ -393,7 +428,6 @@ for my $change_num ( ( ! $batch ) ? (1..3) : $bootstrap ? (4..6) : (3..6) ) {
       }
    }
    print STDERR "\n" if $debug ;
-   $is_first = 0 ;
 }
 
 END {

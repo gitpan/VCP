@@ -59,6 +59,7 @@ use UNIVERSAL qw( isa ) ;
 use XML::Parser ;
 use Time::Local qw( timegm ) ;
 use VCP::Debug ':debug' ;
+use VCP::Patch ;
 use VCP::Rev ;
 
 use vars qw( $VERSION $debug ) ;
@@ -211,7 +212,7 @@ sub parse_revml_file {
 	    push @$content, { TYPE => 'PCDATA', PCDATA => $_[0] } ;
 	 }
       }
-      my $sub = "$tag\_characters" ;
+      my $sub = "${tag}_characters" ;
       $self->$sub( @_ ) if $self->can( $sub ) ;
    } ;
 
@@ -243,7 +244,7 @@ sub parse_revml_file {
 	    push @stack, {
 	       NAME => $tag,
 	       ATTRS => {@_},
-	       CONTENT => ! $self->can( "$tag\_characters" ) ? [] : undef,
+	       CONTENT => ! $self->can( "${tag}_characters" ) ? [] : undef,
 	    } ;
 	    my $sub = "start_$tag" ;
 	    $self->$sub( @_ ) if $self->can( $sub ) ;
@@ -450,25 +451,8 @@ sub end_delta {
       unless defined $saw ;
 
    if ( -s $self->{WORK_NAME} ) {
-      my $patchout ;
-
-      $self->run(
-	 [ 'patch',
-	    '-o', $r->work_path,
-	    '-u',
-	    $saw->work_path,
-	    $self->{WORK_NAME}
-	 ],
-	 \undef,     # Close child's STDIN.  *sigh*
-	 \$patchout,
-      )
-	 or die "$! patching ", $saw->work_path, " up to rev ",
-	    $r->rev_id, ",\n$patchout" ;
-      $patchout =~ s/^missing header for.*$//m ;
-      $patchout =~ s/^patching file.*$//m ;
-
-      debug "vcp: patch output:\n$patchout" if debugging $self ;
-
+      ## source fn, result fn, patch fn
+      vcp_patch( $saw->work_path, $r->work_path, $self->{WORK_NAME} );
       unlink $self->{WORK_NAME} or warn "$! unlinking $self->{WORK_NAME}\n" ;
    }
    else {

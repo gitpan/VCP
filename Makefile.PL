@@ -5,7 +5,7 @@ use vars qw( $VERSION ) ;
 
 require 5.00503 ;
 
-$VERSION = 0.221 ;
+$VERSION = 0.26 ;
 
 my @programs = qw( vcp ) ;
 
@@ -50,22 +50,18 @@ WriteMakefile(
     'VERSION'       => $VERSION,
     'EXE_FILES'     => [ map "bin/$_", @programs ],
     'PREREQ_PM'     => {
-        'IPC::Run'         => 0,
+	'Digest::MD5'      => 0,
+	'File::Temp'       => 0,
+        'IPC::Run'         => 0.6,
 	'MIME::Base64'     => 0,
 	'Regexp::Shellish' => 0,
-        'XML::ValidWriter'  => 0.36,
+	'Text::Diff'       => 0,
+        'XML::ValidWriter' => 0.36,
 	'XML::Parser'      => 0,
-	'Digest::MD5'      => 0,
     },
     'LIBS'          => [''],   # e.g., '-lm' 
     'DEFINE'        => '',     # e.g., '-DHAVE_SOMETHING' 
     'INC'           => '',     # e.g., '-I/usr/include/other' 
-#    'PM'	=> {'Spec.pm'	=> '$(INST_LIBDIR)/File/Spec.pm',
-#    			'OS2.pm'	=> '$(INST_LIBDIR)/File/Spec/OS2.pm',
-#    			'Win32.pm'	=> '$(INST_LIBDIR)/File/Spec/Win32.pm',
-#    			'VMS.pm'	=> '$(INST_LIBDIR)/File/Spec/VMS.pm',
-#   			'Unix.pm'	=> '$(INST_LIBDIR)/File/Spec/Unix.pm',
-#    			}
     clean => { FILES => $io_test_files },
 );
 

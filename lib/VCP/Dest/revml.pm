@@ -9,10 +9,15 @@ VCP::Dest::revml - Outputs versioned files to a revml file
 ## revml output class:
 
    revml:[<output-file>]
-   revml:[<output-file>] -dtd <revml.dtd>
-   revml:[<output-file>] -dtd <version>
+   revml:[<output-file>] --dtd <revml.dtd>
+   revml:[<output-file>] --version <version>
+   revml:[<output-file>] --sort-by=name,rev
 
 =head1 DESCRIPTION
+
+The --dtd and --version options cause the output to be checked against
+a particular version of revml.  This does I<not> cause output to be in 
+that version, but makes sure that output is compliant with that version.
 
 =head1 EXTERNAL METHODS
 
@@ -32,6 +37,7 @@ use RevML::Writer ;
 use Symbol ;
 use UNIVERSAL qw( isa ) ;
 use VCP::Rev ;
+use Text::Diff ;
 
 use vars qw( $VERSION $debug ) ;
 
@@ -61,11 +67,11 @@ sub new {
    my $class = shift ;
    $class = ref $class || $class ;
 
-   my VCP::Dest::revml $self = $class->SUPER::new ;
+   my VCP::Dest::revml $self = $class->SUPER::new( @_ ) ;
 
    my @errors ;
 
-   my ( $spec, $args ) = @_ ;
+   my ( $spec, $options ) = @_ ;
 
    my $parsed_spec = $self->parse_repo_spec( $spec ) ;
 
@@ -86,15 +92,18 @@ sub new {
    }
 
    my $doctype ;
-
+   my @sort_spec ;
    {
-      local *ARGV = $args ;
+      local *ARGV = $options ;
       GetOptions(
 	 'dtd|version' => sub {
-	    $doctype = RevML::Doctype->new( shift @$args ) ;
+	    $doctype = RevML::Doctype->new( shift @$options ) ;
 	 },
-      ) or $self->usage_and_exit ;
+	 "k|sort-by=s" => \@sort_spec,
+       ) or $self->usage_and_exit ;
    }
+
+   $self->set_sort_spec( @sort_spec ) if @sort_spec ;
 
    $doctype = RevML::Doctype->new
       unless $doctype ;
@@ -279,39 +288,54 @@ sub handle_rev {
 	 die "vcp: old work path '$old_cp' not found for '", $saw->name, "'\n"
 	    unless -f $old_cp ;
 
-	 ## TODO: Use Algorithm::Diff.  Need to copy & pased newdiff.pl, then
-	 ## cut it down.
-
          ## TODO: Include entire contents if diff is larger than the contents.
 
+#	 ## Accumulate a bunch of output so that characters can make a
+#	 ## knowledgable CDATA vs &lt;&amp; escaping decision.
+#	 ## We use '-a' since we don't wan't NULs and other control chars to
+#	 ## make diff think it's binary.
+#	 $self->run(
+#	    [qw( diff -a -u ), $old_cp, $cp],
+#	       '|', sub {
+#		  $/ = "\n" ;
+#		  <STDIN> ; <STDIN> ;     ## Throw away first two lines
+#		  my @accum ;
+#		  while (<STDIN>) {
+#		     push @accum, $_ ;
+#		     if ( @accum > 1000 ) {
+#			print @accum ;
+#			@accum = () ;
+#		     }
+#		  }
+#		  print @accum ;
+#		  close STDOUT ;
+#		  kill 9, $$ ;  ## Avoid calling DESTROY()s
+#	       },
+#	       '>', sub {
+#		  _emit_characters( $w, \$_[0] ) ;
+#	       },
+#	 ) ;
 	 ## Accumulate a bunch of output so that characters can make a
 	 ## knowledgable CDATA vs &lt;&amp; escaping decision.
-	 ## We use '-a' since we don't wan't NULs and other control chars to
-	 ## make diff think it's binary.
-	 $self->run(
-	    [qw( diff -a -u ), $old_cp, $cp],
-	       '|', sub {
-		  $/ = "\n" ;
-		  <STDIN> ; <STDIN> ;     ## Throw away first two lines
-		  my @accum ;
-		  while (<STDIN>) {
-		     push @accum, $_ ;
-		     if ( @accum > 1000 ) {
-			print @accum ;
-			@accum = () ;
-		     }
-		  }
-		  print @accum ;
-		  close STDOUT ;
-		  kill 9, $$ ;  ## Avoid calling DESTROY()s
+	 my @output ;
+	 my $outlen = 0 ;
+	 ## TODO: Write a "minimal" diff output handler that doesn't
+	 ## emit any lines from $old_cp, since they are redundant.
+	 diff $old_cp, $cp,
+	    {
+	       ## Not passing file names, so no filename header.
+               STYLE  => "VCP::DiffFormat",
+	       OUTPUT => sub {
+		  push @output, $_[0] ;
+		  $outlen += length $_[0] ;
+		  return unless $outlen > 100_000 ;
+		  _emit_characters( $w, \join "", splice @output  ) ;
 	       },
-	       '>', sub {
-		  _emit_characters( $w, \$_[0] ) ;
-	       },
-	 ) ;
+	    } ;
+	 _emit_characters( $w, \join "", splice @output  ) if $outlen ;
 	 $w->end_delta ;
 	 $w->setDataMode( 1 ) ;
-      }
+      } ;
       $digestion = 1 ;
    }
 
@@ -334,7 +358,7 @@ sub handle_footer {
    my VCP::Dest::revml $self = shift ;
    my ( $footer ) = @_ ;
 
-   $self->writer->endAllTags() ;
+   $self->writer->endAllTags() unless $self->none_seen ;
 
    return ;
 }

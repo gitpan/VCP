@@ -288,13 +288,22 @@ like "/tmp/vcp123/dest-p4".
 
 =cut
 
+my %tmp_dirs ;
+
+END {
+   rmtree [ reverse sort { length $a <=> length $b } keys %tmp_dirs ]
+      if %tmp_dirs ;
+}
+
 sub tmp_dir {
    my VCP::Plugin $self = shift ;
    my $plugin_dir = ref $self ;
    $plugin_dir =~ tr/A-Z/a-z/ ;
    $plugin_dir =~ s/^VCP:://i ;
    $plugin_dir =~ s/::/-/g ;
-   return File::Spec->catdir( File::Spec->tmpdir, "vcp$$", $plugin_dir, @_ ) ;
+   my $tmp_dir_root = File::Spec->catdir( File::Spec->tmpdir, "vcp$$" ) ;
+   $tmp_dirs{$tmp_dir_root} = 1 ;
+   return File::Spec->catdir( $tmp_dir_root, $plugin_dir, @_ ) ;
 }
 
 
@@ -421,7 +430,7 @@ sub rm_work_path {
       while ( length $path > length $root ) {
 	 ( undef, $path ) = fileparse( $path ) ;
 	 ## TODO: More discriminating error handling.  But the error emitted
-	 ## when a directory is not empty may ## differ from platform
+	 ## when a directory is not empty may differ from platform
 	 ## to platform, not sure.
 	 last unless rmdir $path ;
       }
@@ -876,8 +885,6 @@ sub run_safely {
 }
 
 
-## Don't try to AUTOLOAD DESTROY.  Oh wait, I need to do some cleanup
-## here anyway.  Cool.
 sub DESTROY {
    my VCP::Plugin $self = shift ;
 

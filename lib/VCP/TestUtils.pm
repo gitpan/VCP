@@ -14,9 +14,9 @@ use Exporter ;
    mk_tmp_dir
    perl_cmd
    vcp_cmd
+   get_vcp_output
 
    p4d_borken 
-   p4_options
    launch_p4d
 
    cvs_options
@@ -55,7 +55,7 @@ in an END block
    sub mk_tmp_dir {
       confess "undef!!!" if grep !defined, @_ ;
       rmtree \@_ ;
-      mkpath \@_, 1, 0770 ;
+      mkpath \@_, 0, 0770 ;
       push @tmp_dirs, @_ ;
    }
 }
@@ -130,6 +130,58 @@ sub perl_cmd {
 
 Returns a list containing the Perl executable and some options to reproduce
 the current Perl options , like -I.
+
+vcp_cmd assumes it is called from within the main distro directory or one
+subdir under it, since it looks for "bin/vcp" and "../bin/vcp".  This should be
+adequate for almost all uses.
+
+vcp_cmd caches it's results to allow it to be run from other directories after
+the first time it's called. (this is not a significant performance improvement;
+running the vcp process takes several orders of magnitude longer than the quick
+checks vcp_cmd does).
+
+=cut
+
+my @vcp_cmd ;
+
+sub vcp_cmd {
+   unless ( @vcp_cmd ) {
+      ## We always run vcp by doing a @perl, vcp, to make sure that vcp runs under
+      ## the same version of perl that we are running under.
+      my $vcp = 'vcp' ;
+      $vcp = "bin/$vcp"    if -x "bin/$vcp" ;
+      $vcp = "../bin/$vcp" if -x "../bin/$vcp" ;
+
+      $vcp = File::Spec->rel2abs( $vcp ) ;
+
+      @vcp_cmd = ( perl_cmd, $vcp ) ;
+   }
+   return @vcp_cmd ;
+}
+
+
+=item get_vcp_output
+
+   @vcp = get_vcp_output "foo:", "-bar" ;
+
+Does a:
+
+   run [ vcp_cmd, @_, "revml:", ... ], \undef, \$out
+      or croak "`vcp blahdy blah` returned $?";
+
+and returns $out.  The "..." refers to whatever output options are needed
+to make the test output agree with C<bin/gentrevml>'s test files
+(t/test-*.revml).
+
+=cut
+
+sub get_vcp_output {
+   my $out ;
+   my @args = ( @_, "revml:", "--sort-by=name,rev_id" ) ;
+   run [ vcp_cmd, @args ], \undef, \$out
+      or croak "`vcp ", join( " ", @_ ), " returned $?\n" ;
+   return $out ;
+}
 
 =cut
 
@@ -216,27 +268,6 @@ sub rm_elts {
 
 =over
 
-=item p4_options
-
-   $p4_options = p4_options $prefix ;
-
-Returns a hash of options.  $prefix should be unique to the calling program.
-
-=cut
-
-sub p4_options {
-   my $prefix = shift || "" ;
-   my $tmp = File::Spec->tmpdir ;
-   ## TODO: Find an unused port for p4d.  Or at least do a rand().
-   return {
-      repo    =>    File::Spec->catdir( $tmp, "vcp$$\_${prefix}p4repo" ),
-#      work    =>    File::Spec->catdir( $tmp, "vcp$$\_${prefix}p4work" ),
-      user    =>    "${prefix}t_user",
-      port    =>    19666,
-   } ;
-}
-
-
 =item p4_borken
 
 Returns true if the p4 is missing or too old (< 99.2).
@@ -257,38 +288,59 @@ sub p4d_borken {
 
 =item launch_p4d
 
-   launch_p4d $p4_options ;
+   launch_p4d "prefix_" ;
 
 Creates an empty repository and launches a p4d for it.  The p4d will be killed
-and it's repository deleted on exit.
+and it's repository deleted on exit.  Returns the options needed to access
+the repository.
 
 =cut
 
 sub launch_p4d {
-   my $options = pop ;
-   croak "No options passed" unless $options && %$options ;
+   my $prefix = shift || "" ;
+
    {
       my $borken = p4d_borken ;
       croak $borken if $borken ;
    }
 
-   mk_tmp_dir $options->{repo} ;
+   my $tmp  = File::Spec->tmpdir ;
+   my $repo = File::Spec->catdir( $tmp, "vcp${$}_${prefix}p4repo" ) ;
+   mk_tmp_dir $repo ;
 
    ## Ok, this is wierd: we need to fork & run p4d in foreground mode so that
    ## we can capture it's PID and kill it later.  There doesn't seem to be
    ## the equivalent of a 'p4d.pid' file. If we let it daemonize, then I
    ## don't know how to get it's PID.
-   my $p4d_pid = fork ;
-   unless ( $p4d_pid ) {
-      ## Ok, there's a tiny chance that this will fail due to a port
-      ## collision.  Oh, well.
-      exec 'p4d', '-f', '-r', $options->{repo}, '-p', $options->{port} ;
-      die "$!: p4d" ;
+
+   my $port ;
+   my $p4d_pid ;
+   my $tries ;
+   while () {
+      ## 30_000 is because I vaguely recall some TCP stack that had problems
+      ## with listening on really high ports.  2048 is because I vaguely recall
+      ## that some OS required root privs up to 2047 instead of 1023.
+      $port = ( rand( 65536 ) % 30_000 ) + 2048 ;
+      my @p4d = ( 'p4d', '-f', '-r', $repo, '-p', $port ) ;
+      print "# Running ", join( " ", @p4d ), "\n" ;
+      $p4d_pid = fork ;
+      unless ( $p4d_pid ) {
+	 ## Ok, there's a tiny chance that this will fail due to a port
+	 ## collision.  Oh, well.
+	 exec @p4d ;
+	 die "$!: p4d" ;
+      }
+      sleep 1 ;
+      ## Wait for p4d to start.  'twould be better to wait for P4PORT to
+      ## be seen.
+      select( undef, undef, undef, 0.250 ) ;
+
+      last if kill 0, $p4d_pid ;
+      die "p4d failed to start after $tries tries, aborting\n"
+         if ++$tries >= 3 ;
+      warn "p4d failed to start, retrying\n" ;
    }
-   sleep 1 ;
-   ## Wait for p4d to start.  'twould be better to wait for P4PORT to
-   ## be seen.
-   select( undef, undef, undef, 0.250 ) ;
+
    END {
       return unless defined $p4d_pid ;
       kill 'INT',  $p4d_pid or die "$! $p4d_pid" ;
@@ -316,6 +368,11 @@ sub launch_p4d {
 	 kill 'KILL', $p4d_pid or die "$! $p4d_pid" ;
       }
    }
+
+   return {
+      user =>    "${prefix}t_user",
+      port =>    $port,
+   } ;
 }
 
 =back
@@ -324,35 +381,26 @@ sub launch_p4d {
 
 =over
 
-=item cvs_options
-
-   $cvs_options = cvs_options $prefix ;
-
-returns the options needed to build and access a cvs repository.
-
-=cut
-
-sub cvs_options {
-   my $prefix = shift || "" ;
-   my $tmp = File::Spec->tmpdir ;
-   return {
-      repo    =>    File::Spec->catdir( $tmp, "vcp$$\_${prefix}cvsroot" ),
-      work    =>    File::Spec->catdir( $tmp, "vcp$$\_${prefix}cvswork" ),
-   } ;
-}
-
 =item init_cvs
 
-   init_cvs $cvs_options, $module_name ;
+   my $cvs_options = init_cvs $prefix, $module_name ;
 
 Creates a CVS repository containing an empty module. Also sets
 $ENV{LOGNAME} if it notices that we're running as root, so CVS won't give
 a "cannot commit files as 'root'" error. Tries "nobody", then "guest".
 
+Returns the options needed to access the cvs repository.
+
 =cut
 
 sub init_cvs {
-   my ( $options, $module ) = @_ ;
+   my ( $prefix , $module ) = @_ ;
+
+   my $tmp = File::Spec->tmpdir ;
+   my $options = {
+      repo    =>    File::Spec->catdir( $tmp, "vcp${$}_${prefix}cvsroot" ),
+      work    =>    File::Spec->catdir( $tmp, "vcp${$}_${prefix}cvswork" ),
+   } ;
 
    my $cwd = cwd ;
    ## Give vcp ... cvs:... a repository to work with.  Note that it does not
@@ -383,6 +431,14 @@ sub init_cvs {
 	    ( $ENV{LOGNAME}, $> ) = ( $_, $uid ) ;
 	    last ;
 	 }
+	 ## Must set uid, too, to keep perl (and thus vcp) from bombing
+	 ## out when running setuid and given a -I option. This happens
+	 ## a lot in the test suite, since the tests often call vcp
+	 ## using "perl", "-Iblib/lib", "bin/vcp", ... to recreate the
+	 ## appropriate operating environment for Perl.  If this becomes
+	 ## a problem, perhaps we can hack in a "run as user" option to
+	 ## VCP::Utils::cvs so that only the cvs subcommands are run
+	 ## setuid, or perhaps we can avoid passing "-I" to the perls.
 	 $< = $> ;
 	 
 	 warn
@@ -418,6 +474,7 @@ sub init_cvs {
 #
 #   system qw( cvs commit -m foo CVSROOT/modules )
 #                                             and die "cvs commit failed" ;
+   return $options ;
 }
 
 

@@ -53,9 +53,12 @@ sub create_cvs_workspace {
    ## the revs, since all the revs need to be kept around until the VCP::Dest
    ## is through with them.
    $self->command_chdir( $self->tmp_dir( "co" ) ) ;
-   $self->cvs( [ 'checkout', $self->rev_root ] ) ;
+   my ( $module ) = $self->rev_root =~ m{^/*(.*?)(/|\Z)} ;
+   die "Unable to parse cvs module name from '", $self->rev_root, "'\n"
+      unless defined $module and length $module ;
+   $self->cvs( [ 'checkout', $module ] ) ;
    $self->work_root( $self->tmp_dir( "co", $self->rev_root ) ) ;
-   $self->command_chdir( $self->work_path ) ;
+   $self->command_chdir( $self->tmp_dir( "co", $self->rev_root ) ) ;
 }
 
 

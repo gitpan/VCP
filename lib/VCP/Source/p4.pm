@@ -453,32 +453,32 @@ sub load_p4_labels {
 
    $self->command_ok_result_codes( 0, 1 ) ;
 
-   while ( @labels ) {
-      my $bundle_size = @labels > 25 ? @labels : 25 ;
-      my @bundle_o_labels = splice @labels, 0, $bundle_size ;
+   my $marker = "//.../NtLkly" ;
+   my $p4_files_args =
+      join(
+         "",
+	 ( map {
+	    ( "$marker\n", "//...\@$_\n" ) ;
+	 } @labels ),
+      ) ;
+   my $files ;
+   $self->p4( [ qw( -x - -s files) ], "<", \$p4_files_args, ">", \$files ) ;
 
-      my $marker = "//.../NtLkly" ;
-      my @p4_files_args = map {
-         ( $marker, "//...\@$_" ) ;
-      } @bundle_o_labels ;
-      my $files ;
-      $self->p4( [ "-s", "files", @p4_files_args ], \$files ) ;
-
-      my $label ;
-      for my $spec ( split /\n/m, $files ) {
-         last if $spec =~ /^exit:/ ;
-         if ( $spec =~ /^error: $marker/o ) {
-	    $label = shift @bundle_o_labels ;
-	    next ;
-	 }
-	 next if $spec =~ m{^error: //\.\.\.\@.+ file(\(s\))? not in label.$} ;
-         $spec =~ /^.*?: *\/\/(.*)#(\d+)/
-	    or die "Couldn't parse name & rev from '$spec' in '$files'" ;
-
-         debug "vcp: p4 label '$label' => '$1#$2'" if debugging $self ;
-	 push @{$self->{P4_LABEL_CACHE}->{$1}->{$2}}, $label ;
+   my $label ;
+   for my $spec ( split /\n/m, $files ) {
+      last if $spec =~ /^exit:/ ;
+      if ( $spec =~ /^error: $marker/o ) {
+	 $label = shift @labels ;
+	 next ;
       }
+      next if $spec =~ m{^error: //\.\.\.\@.+ file(\(s\))? not in label.$} ;
+      $spec =~ /^.*?: *\/\/(.*)#(\d+)/
+	 or die "Couldn't parse name & rev from '$spec' in '$files'" ;
+
+      debug "vcp: p4 label '$label' => '$1#$2'" if debugging $self ;
+      push @{$self->{P4_LABEL_CACHE}->{$1}->{$2}}, $label ;
    }
+
    $self->command_ok_result_codes( 0 ) ;
 
    return ;
@@ -515,95 +515,41 @@ my $filter_prog = <<'EOPERL' ;
 EOPERL
 
 
-sub get_revs {
+sub get_rev {
    my VCP::Source::p4 $self = shift ;
 
-   my ( @revs ) = @_ ;
+   my VCP::Rev $r ;
 
-   return unless @revs ;
+   ( $r ) = @_ ;
 
-   for ( @revs ) {
-      my VCP::Rev $r = $_ ;  ## 5.00503 doesn't have for my Foo $foo (...)
-      next if defined $r->action && $r->action eq "delete" ;
-      my $fn  = $r->name ;
-      my $rev = $r->rev_id ;
-      $r->work_path( $self->work_path( $fn, $rev ) ) ;
-      my $wp  = $r->work_path ;
-      $self->mkpdir( $wp ) ;
+   return if defined $r->action && $r->action eq "delete" ;
+   my $fn  = $r->name ;
+   my $rev = $r->rev_id ;
+   $r->work_path( $self->work_path( $fn, $rev ) ) ;
+   my $wp  = $r->work_path ;
+   $self->mkpdir( $wp ) ;
 
-      my $denormalized_name = $self->denormalize_name( $fn ) ;
-      my $rev_spec = "$denormalized_name#$rev" ;
+   my $denormalized_name = $self->denormalize_name( $fn ) ;
+   my $rev_spec = "$denormalized_name#$rev" ;
 
-      sysopen( WP, $wp, O_CREAT | O_WRONLY )
-	 or die "$!: $wp" ;
+   sysopen( WP, $wp, O_CREAT | O_WRONLY )
+      or die "$!: $wp" ;
 
-      my $re = quotemeta( $rev_spec ) . " - .* change \\d+ \\((.+)\\)";
+   my $re = quotemeta( $rev_spec ) . " - .* change \\d+ \\((.+)\\)";
 
-      ## TODO: look for "+x" in the (...) and pass an executable bit
-      ## through the rev structure.
+   ## TODO: look for "+x" in the (...) and pass an executable bit
+   ## through the rev structure.
+   $self->p4( 
+      [ "print", $rev_spec ],
+      ">", sub {
+	 $_ = shift ;
+	 s/\A$re\r?\n//m if $re ;
+	 print WP or die "$! writing to $wp" ;
+	 $re = undef ;
+      },
+   ) ;
 
-      $self->p4( 
-	 [ "print", $rev_spec ],
-	 ">", sub {
-	    $_ = shift ;
-            s/\A$re\r?\n//m if $re ;
-	    print WP or die "$! writing to $wp" ;
-	    $re = undef ;
-	 },
-      ) ;
-
-      close WP or die "$! closing wp" ;
-   }
-
-#   ## TODO: Don't filter non-text files.
-#   ## TODO: Consider using a 'p4 sync' command to restore the modification
-#   ## time so we can capture it.
-#   my $dispatch_prog = <<'EOPERL' ;
-#      use strict ;
-#      my ( $name, $working_path ) = ( shift, shift ) ;
-#      my $re = "info: " . quotemeta( $name ) . " - .* change \\d+ \\((.+)\\)\$";
-#      my $found_header ;
-#      my $found_this_header ;
-#      my $header_like = '' ;
-#      while (<STDIN>) {
-#	 if ( defined $re && /$re/m ) {
-#	    $found_header = 1 ;
-#	    $found_this_header = 1 ;
-#	    open( STDOUT, ">$working_path" )
-#	       or die ">$working_path" ;
-#	    if ( @ARGV ) {
-#	       ( $name, $working_path ) = ( shift, shift ) ;
-#	       $re = "info: " . quotemeta( $name ) . " - .* change \\d+ \\((.+)\\)\$";
-#	       $found_this_header = 0 ;
-#	       $header_like = "" ;
-#	    }
-#	    else {
-#	       undef $re ;
-#	    }
-#	    next ;
-#	 }
-#	 die "No header found for '$name' in '$_' using qr{$re}"
-#	    unless $found_header ;
-#	 $header_like = $_ if ! length $header_like && m{\/\/.*#\d+ - } ;
-#	 s/^text: // ;
-#	 next if /^exit: \d+/ ;
-#	 print ;
-#      }
-#
-#      unshift @ARGV, ( $name, $working_path ) unless $found_this_header ;
-#
-#      die(
-#         "Did not find ",
-#         @ARGV / 2,
-#         " files in p4 print output\n",
-#	 ( length $header_like ? "suspect qr{$header_like} didn't match\n":()),
-#         join( '', map "'$_'\n", @ARGV )
-#      ) if @ARGV ;
-#EOPERL
-#   $self->p4(
-#      [ "-s", "print", @rev_specs ],
-#      "|", [ $^X, "-we", $dispatch_prog, @dispatcher_args ]
-#   ) ;
+   close WP or die "$! closing wp" ;
 
    return ;
 }
@@ -630,24 +576,11 @@ sub copy_revs {
    $self->scan_filelog( $self->min, $self->max ) ;
    $self->dest->sort_revs( $self->revs ) ;
 
-   my VCP::Rev $r ;
-   my @bundle_o_revs ;
-   my %bundled_rev_names ;
-   while ( $r = $self->revs->shift ) {
-      if ( @bundle_o_revs >= 50 ) {#|| exists $bundled_rev_names{$r->name} ) {
-         $self->get_revs( @bundle_o_revs ) ;
-	 $self->dest->handle_rev( $_ ) for @bundle_o_revs ;
-	 @bundle_o_revs = () ;
-	 %bundled_rev_names = () ;
-      }
-      push @bundle_o_revs, $r ;
-      $bundled_rev_names{$r->name} = undef ;
-   }
-
-   $self->get_revs( @bundle_o_revs ) ;
-   for ( @bundle_o_revs ) {
-      debug "vcp: sending ", $_->as_string, " to dest" if debugging $self ;
-      $self->dest->handle_rev( $_ ) 
+   ## Discard the revs so they'll be DESTROYed and thus
+   ## clean up after themselves.
+   while ( my VCP::Rev $r = $self->revs->shift ) {
+      $self->get_rev( $r ) ;
+      $self->dest->handle_rev( $r ) ;
    }
 }
 

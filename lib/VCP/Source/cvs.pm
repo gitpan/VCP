@@ -23,8 +23,9 @@ Reads a CVS repository.
 
 B<NOTE:> You no longer need to check the desired files out in to a local
 directory.  VCP::Source::cvs now creates it's own checkout for two reasons:
-it's easier and less coupled to the user's system and it's less likely to
-be in some unknown state that causes odd behaviors due to sticky tags, etc.
+it's easier and less coupled to the user's system and it's less likely to be in
+some unknown state that causes odd behaviors due to sticky tags, etc. If you do
+want to use a workspace, see the --cd option.
 
 This module in alpha.
 
@@ -71,9 +72,17 @@ a repository.
 
 =item --cd
 
-Used to set the CVS root directory, overriding the value of the CVSROOT
-environment variable.  Using this and --cd it is possible to export from
-one CVS repository and import to another.
+Used to set the CVS working directory.  VCP::Source::cvs will cd to this
+directory before calling cvs, and won't initialize a CVS workspace of it's own
+(normally, VCP::Source::cvs does a "cvs checkout" in a temporary directory).
+
+This is an advanced option that allows you to use a CVS workspace you establish
+instead of letting vcp create one in a temporary directory somewhere.  This is
+useful if you want to read from a CVS branch or if you want to delete some
+files or subdirectories in the workspace.
+
+If this option is a relative directory, then it is treated as relative to
+the current directory.
 
 =item --rev-root
 
@@ -282,7 +291,13 @@ sub new {
    $self->cvs( ['--version' ], \$self->{CVS_INFO} ) ;
 
    ## This does a checkout, so we'll blow up quickly if there's a problem.
-   $self->create_cvs_workspace ;
+   unless ( defined $work_dir ) {
+      $self->create_cvs_workspace ;
+   }
+   else {
+      $self->work_root( File::Spec->rel2abs( $work_dir ) ) ; 
+      $self->command_chdir( $self->work_path ) ;
+   }
 
    return $self ;
 }
@@ -438,11 +453,16 @@ sub copy_revs {
          $min_rev_spec_time = $t if $t <= ( $min_rev_spec_time || $t ) ;
          $max_rev_spec_time = $t if $t >= $max_rev_spec_time ;
       }
-      $max_rev_spec_time = $max_time if substr( $self->rev_spec, -1 ) eq ':' ;
+#      $max_rev_spec_time = $max_time if substr( $self->rev_spec, -1 ) eq ':' ;
+      $max_rev_spec_time = undef if substr( $self->rev_spec, -1 ) eq ':' ;
 
       debug(
-	 "cvs: including files in ['" . localtime( $min_rev_spec_time ),
-	 "'..'" . localtime( $max_rev_spec_time ),
+	 "vcp: including files in ['",
+	 localtime( $min_rev_spec_time ),
+	 "'..'",
+	 defined $max_rev_spec_time
+	    ? localtime( $max_rev_spec_time )
+	    : "<end_of_time>",
 	 "']"
       ) if debugging $self ;
    }
@@ -455,18 +475,18 @@ sub copy_revs {
    $self->revs( VCP::Revs->new ) ;
    for my $r ( @{$revs->as_array_ref} ) {
       if ( $ignore_file->( $r->source_name ) ) {
-	 if ( defined $min_rev_spec_time 
-	    && $r->time >= $min_rev_spec_time
-	    && $r->time <= $max_rev_spec_time
+	 if (
+	       (!defined $min_rev_spec_time || $r->time >= $min_rev_spec_time)
+	    && (!defined $max_rev_spec_time || $r->time <= $max_rev_spec_time)
 	 ) {
 	    debug(
-	       "cvs: including file '", $r->source_name, "'"
+	       "vcp: including file ", $r->as_string
 	    ) if debugging $self ;
 	 }
 	 else {
 	    debug(
-	       "cvs: ignoring file '", $r->source_name,
-	       "': no revisions match -r"
+	       "vcp: ignoring file ", $r->as_string,
+	       ": no revisions match -r"
 	    ) if debugging $self ;
 	    next ;
 	 }
