@@ -147,8 +147,10 @@ sub handle_rev {
    my $fn = $r->name ;
 
    my $is_base_rev = $r->is_base_rev ;
-   die "Saw '" . $saw->as_string . "', but found a later digest-only rev" . $r->as_string
-      if $saw && $is_base_rev ;
+   die(
+      "Saw '", $saw->as_string,
+      "', but found a later base rev '" . $r->as_string, "'"
+   ) if $saw && $is_base_rev ;
 
    $w->start_rev ;
    $w->name(       $fn           ) ;

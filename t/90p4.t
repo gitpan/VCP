@@ -54,6 +54,8 @@ sub slurp {
 
 my @tests = (
 
+sub {}, ## Two ok's in next test.
+
 sub {
    ## revml -> p4 -> revml, bootstrap export
    my $type = 'p4' ;
@@ -71,8 +73,10 @@ sub {
    eval {
       my $out ;
       ## $in and $out allow us to avoide execing diff most of the time.
-      run [ $perl, $vcp, "-d", "p4", "revml:$infile", $p4spec, '-w', $p4work ], \undef
+      run [ $perl, $vcp, "revml:$infile", $p4spec, '-w', $p4work ], \undef
 	 or die "`$vcp revml:$infile $p4spec` returned $?" ;
+
+      ok( 1 ) ;
 
       run [ $perl, $vcp, "$p4spec..." ], \undef, \$out 
 	 or die "`$vcp $p4spec...` returned $?" ;
@@ -133,6 +137,8 @@ sub {
 
 },
 
+sub {}, ## Two ok's in next test.
+
 sub {
    ## p4 -> cvs bootstrap
    my $type = 'p4' ;
@@ -151,6 +157,8 @@ sub {
       my $out ;
       run( [ $perl, $vcp, "$p4spec//depot/...", "cvs" ], \undef )
 	 or die "`$vcp $p4spec//depot/... cvs` returned $?" ;
+
+      ok( 1 ) ;
 
       ## Gotta use a working directory with a checked-out version
       chdir $cvswork or die $! . ": '$cvswork'" ;
@@ -204,6 +212,7 @@ open F, ">$outfile_t" ; print F $out ; close F ;
    }
 },
 
+sub {}, ## Two ok's in next test.
 sub {
    ## revml -> p4 -> revml, incremental export
    my $type = 'p4' ;
@@ -223,7 +232,7 @@ sub {
          [ qw( p4 -u ), $p4user, "-c", $p4client, "-p", $p4port, qw( counter change ) ],
 	 \undef, \$incr_change ;
       chomp $incr_change ;
-      die "Invalid change counger value: '$incr_change'"
+      die "Invalid change counter value: '$incr_change'"
          unless $incr_change =~ /^\d+$/ ;
 
       ++$incr_change ;
@@ -234,7 +243,9 @@ sub {
       run [ $perl, $vcp, "revml:$infile", "$p4spec", '-w', $p4work ], \undef
 	 or die "`$vcp revml:$infile $p4spec` returned $?" ;
 
-      run [ $perl, $vcp, "$p4spec...\@$incr_change,#head" ], \undef, \$out
+      ok( 1 ) ;
+
+      run [ $perl, $vcp, "-d", ".*", "$p4spec...\@$incr_change,#head" ], \undef, \$out
 	 or die "`$vcp $p4spec...\@$incr_change,#head` returned $?" ;
 
       my $in = slurp $infile ;

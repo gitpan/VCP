@@ -1,5 +1,42 @@
 CHANGES for vcp - Version CoPy
 
+
+0.04 Tue Dec 12 00:15:57 EST 2000
+   - Reorg of VCP::Source::p4
+     - One large filelog command is run instead of many small ones.
+       This takes advantage of the -m option to make sure enough changes
+       are listed.  Many extra revisions of most files are probably
+       listed, but listing and ignoring them is quicker than spawning p4
+       over and over.  Wish p4 filelog had a revision range...
+     - it now doesn't suck the entire filelog output in to memory, it
+       parses it line by line as it's emitted from the `p4 filelog`
+     - `p4 print` is now used to print a bunch of files at once, using
+       the header line to separate one file from the next, kind of like
+       splitting a mime-encoded message.  There's a very slight chance
+       that it will misjudge the boundary between two files if a file
+       happens to have a line that looks very much like the header line
+       for the next file.  This is pretty unlikely and I'll fix it if it
+       crops up.  I could batch them more, right now it never puts two
+       revisions of the same filename in the same batch, for no really
+       good reason.  Another method might be to batch 25 or 50 revs each
+       time.
+     - it turns out there's a problem spawning multiple p4 commands at
+       the same time against the same p4d (p4d is 99.2, FWIW).  Or at
+       least running large `p4 files ...` while there's a large `p4
+       filelog` still also running.
+     - filelog lines beginning with "... ..." are now ignored.  These
+       are notifications of copy, branch, and integrate events that we
+       don't yet do anything with.
+     - deleted cur() and P4_CUR
+     - deleted P4_IS_INCREMENTAL
+   - Made an assertion in VCP::Dest::revml::handle_rev() a little
+     clearer
+   - Added some ok(1) calls to 90p4.t to make it easier to figure out
+     which child process is whining or aborting
+   - Made the message that's printed when a subcommand emits unexpected
+     output say "stderr" instead of "stdout".
+   - Cleaned up documentation for VC::Plugin::work_path().
+
 0.03 Sun Dec 10 13:14:07 EST 2000
    - Cleaned up VCP::Source::p4 a bit.  It doesn't whine as much now
      when it sees what it considers to be old news in the log file.

@@ -101,12 +101,11 @@ use VCP::Debug ":debug" ;
 use Regexp::Shellish qw( :all ) ;
 use VCP::Rev ;
 use VCP::Source ;
+use IPC::Run qw( run io timeout new_chunker ) ;
 
 use base 'VCP::Source' ;
 use fields (
-   'P4_CUR',            ## The current change number being processed
    'P4_FILESPEC',       ## What revs of what files to get.  ARRAY ref.
-   'P4_IS_INCREMENTAL', ## Hash of filenames, 0->bootstrap, 1->incremental
    'P4_INFO',           ## Results of the 'p4 info' command
    'P4_LABEL_CACHE',    ## ->{$name}->{$rev} is a list of labels for that rev
    'P4_LABELS',         ## Array of labels from 'p4 labels'
@@ -209,7 +208,6 @@ sub new {
 
    $self->min( $min ) ;
    $self->max( $max ) ;
-   $self->cur( undef ) ;
 
    $self->load_p4_info ;
    $self->load_p4_labels ;
@@ -303,158 +301,190 @@ my $filelog_rev_info_re = qr{
    \S+\s+              ### 'by '
    (\S(?:.*?\S))\s+    # user id.  Undelimited, so hope for best
    \((\S+?)\)          # type
-   .*\r?\n\r?
-}mx ;
-
-# This re matches "... ...", if the previous re doesn't match.
-#
-my $filelog_etc_re = qr{
-   \G                  # Use with /gc!!
-   ^\.\.\.\s+\.\.\.
-   .*\r?\n\r?
+   .*\r?\n
 }mx ;
 
 # And this one grabs the comment
 my $filelog_comment_re = qr{
    \G
-   ^\r?\n\r?
-   ((?:^(?:\s|$).*\r?\n\r?)*)
-   \n\r?
+   ^\r?\n
+   ((?:^[^\S\r\n].*\r?\n)*)
+   ^\r?\n
 }mx ;
 
 
-sub lookup_revs_in_change {
+sub scan_filelog {
    my VCP::Source::p4 $self = shift ;
 
-   my ( $change_id ) = @_ ;
+   my ( $first_change_id, $last_change_id ) = @_ ;
 
    my $log = '' ;
 
-   my $spec =  join( '', $self->filespec . '@' . $change_id ) ;
+   my $delta = $last_change_id - $first_change_id + 1 ;
+
+   my $spec =  join( '', $self->filespec . '@' . $last_change_id ) ;
    my $temp_f = $self->command_stderr_filter ;
    $self->command_stderr_filter(
        qr{//\S* - no file\(s\) at that changelist number\.\s*\n}
    ) ;
-   $self->p4( [qw( filelog -m 1 -l ), $spec ], \$log ) ;
-   $self->command_stderr_filter( $temp_f ) ;
 
-   $self->{P4_IS_INCREMENTAL} = {} ;
+   my %oldest_revs ;
+   {
+      my $log_state = "need_file" ;
 
-   while ( $log =~ m{\G(.*?)^//(.*?)\r?\n\r?}gmsc ) {
-      warn "vcp: Ignoring '$1' in p4 filelog output\n" if length $1 ;
-      my $name = $2 ;
-      my $norm_name = $self->normalize_name( $name ) ;
-      while () {
-         next if $log =~ m{$filelog_etc_re}gc ;
-         last unless $log =~ m{$filelog_rev_info_re}gc ;
+      my VCP::Rev $r ;
+      my $name ;
+      my $comment ;
 
-	 my VCP::Rev $r = VCP::Rev->new(
-	    name      => $norm_name,
-	    rev_id    => $1,
-	    change_id => $2,
-	    action    => $3,
-	    time      => $self->parse_time( $4 ),
-	    user_id   => $5,
-	    type      => $6,
-	    comment   => '',
-	 ) ;
+      my $p4_filelog_parser = sub {
+	 local $_ = shift ;
 
-	 if ( $r->change_id != $change_id ) {
-	    debug(
-	       "ignoring change '",
-	       $r->change_id,
-	       "' '",
-	       $r->action,
-	       "' for '$spec'" 
-	    ) if debugging $self ;
+      REDO_LINE:
+	 if ( $log_state eq "need_file" ) {
+	    die "\$r defined" if defined $r ;
+	    die "vcp: p4 filelog parser: file name expected, got '$_'"
+	       unless m{^//(.*?)\r?\n\r?} ;
+
+	    $name = $1 ;
+	    $log_state = "revs" ;
+	 }
+	 elsif ( $log_state eq "revs" ) {
+	    return if m{^\.\.\.\s+\.\.\..*\r?\n\r?} ;
+	    unless ( m{$filelog_rev_info_re} ) {
+	       $log_state = "need_file" ;
+	       goto REDO_LINE ;
+	    }
+
+	    my $change_id = $2 ;
+	    if ( $change_id < $self->min ) {
+	       undef $r ;
+	       $log_state = "need_comment" ;
+	       return ;
+	    }
+
+	    my $norm_name = $self->normalize_name( $name ) ;
+	    die "\$r defined" if defined $r ;
+	    $r = VCP::Rev->new(
+	       name      => $norm_name,
+	       rev_id    => $1,
+	       change_id => $change_id,
+	       action    => $3,
+	       time      => $self->parse_time( $4 ),
+	       user_id   => $5,
+	       type      => $6,
+	       comment   => '',
+	    ) ;
+
+	    ## Filelogs are in newest...oldest order, so this should catch
+	    ## the oldest revision of each file.
+	    $oldest_revs{$name} = $r ;
+
+	    debug "vcp: ", $r->as_string if debugging $self ;
+
+	    $log_state = "need_comment" ;
+	 }
+	 elsif ( $log_state eq "need_comment" ) {
+	    unless ( /^$/ ) {
+	       die
+   "vcp: p4 filelog parser: expected a blank line before a comment, got '$_'" ;
+	    }
+	    $log_state = "comment_accum" ;
+	 }
+	 elsif ( $log_state eq "comment_accum" ) {
+	    if ( /^$/ ) {
+	       if ( defined $r ) {
+		  $r->comment( $comment ) ;
+		  $self->revs->add( $r ) ;
+		  $r = undef ;
+	       }
+	       $comment = undef ;
+	       $log_state = "revs" ;
+	       return ;
+	    }
+	    unless ( s/^\s// ) {
+	       die "vcp: p4 filelog parser: expected a comment line, got '$_'" ;
+	    }
+	    $comment .= $_ ;
+	 }
+	 else {
+	    die "unknown log_state '$log_state'" ;
+	 }
+      } ;
+
+      ## I tried to avoid spooling this to a file, but p4 seems to have
+      ## trouble running alongside itself.  The p4 files commands I use
+      ## to get the labelled revs of each file 
+      ## would hang when running against a p4 99.2 server.So, off to a
+      ## file it goes, to be read back in and deleted.
+      ## Another strategy would be to delay labelling o
+      $self->p4(
+	 [qw( filelog -m ), $delta, "-l", $spec ],
+	 '>', new_chunker, $p4_filelog_parser
+      ) ;
+      $self->command_stderr_filter( $temp_f ) ;
+
+      die "\$r defined" if defined $r ;
+   }
+
+   for my $r ( $self->revs->get ) {
+      ## I do this here instead of when the filelog is parsed so we never
+      ## have 2 p4 commands running at once.  That seems to cause the
+      ## p4 files command to hang occasionally when hitting against
+      ## p4 server v99.2.  I do it before emitting output so
+      ## we die without emitting any output if it fails.  It's done before
+      ## we get base revs.  Labels are incorrect in them and not
+      ## allowed by the DTD.
+      $r->labels( $self->get_p4_file_labels( $r->name, $r->rev_id ) );
+   }
+
+   my @base_rev_specs ;
+   for my $name ( sort keys %oldest_revs ) {
+      my $r = $oldest_revs{$name} ;
+      my $rev_id = $r->rev_id ;
+      if ( $self->is_incremental( "//$name", $r->rev_id ) ) {
+	 $rev_id -= 1 ;
+	 push @base_rev_specs, "//$name#$rev_id" ;
+      }
+      else {
+	 debug "vcp: bootstrapping '", $r->name, "#", $r->rev_id, "'"
+	    if debugging $self ;
+      }
+      $oldest_revs{$name} = undef ;
+   }
+
+   if ( @base_rev_specs ) {
+      undef $log ;
+      $self->command_stderr_filter(
+	  qr{//\S* - no file\(s\) at that changelist number\.\s*\n}
+      ) ;
+      $self->p4( [qw( filelog -m 1 -l ), @base_rev_specs ], \$log ) ;
+      $self->command_stderr_filter( $temp_f ) ;
+
+      while ( $log =~ m{\G(.*?)^//(.*?)\r?\n\r?}gmsc ) {
+	 warn "vcp: Ignoring '$1' in p4 filelog output\n" if length $1 ;
+	 my $name = $2 ;
+
+	 my $norm_name = $self->normalize_name( $name ) ;
+	 while () {
+	    next if     $log =~ m{\G^\.\.\.\s+\.\.\..*\r?\n\r?}gmc ;
+
+	    last unless $log =~ m{$filelog_rev_info_re}gc ;
+
+	    my VCP::Rev $br = VCP::Rev->new(
+	       name      => $norm_name,
+	       rev_id    => $1,
+	       change_id => $2,
+   # Don't send these on a base rev for incremental changes:
+   #	     action    => $3,
+   #	     time      => $self->parse_time( $4 ),
+   #	     user_id   => $5,
+		type      => $6,
+   #	     comment   => '',
+	    ) ;
+
+	    $self->revs->add( $br ) ;
+
 	    $log =~ m{$filelog_comment_re}gc ;
-	    next ;
-	 }
-
-	 my VCP::Rev $old_r = $self->seen( $r ) ;
-
-         unless ( $old_r ) {
-	    unless ( exists $self->{P4_IS_INCREMENTAL}->{$norm_name} ) {
-	       my $ii = $self->is_incremental( "//$name", $r->rev_id ) ;
-	       $self->{P4_IS_INCREMENTAL}->{$norm_name} = $ii ;
-	       if ( $ii ) {
-		  my $rev = $r->rev_id - 1 ;
-		  my $blog ;
-		  $self->p4( [qw( filelog -m 1 -l ), "//$name#$rev" ], \$blog );
-		  debug (
-		     "vcp: '", $r->name, "#", $r->rev_id,
-		     "' incremental from #$rev"
-		  ) if debugging $self ;
-
-		  ## Skip the filename header line
-		  $blog =~ m/\r?\n\r?/g
-		     or die "Couldn't parse '$blog'" ;
-
-		  $blog =~ m/$filelog_rev_info_re/gc
-		     or die "Couldn't parse '$blog'" ;
-
-		  my VCP::Rev $br = VCP::Rev->new(
-		     name      => $norm_name,
-		     rev_id    => $1,
-		     change_id => $2,
-      # Don't send these on a base rev for incremental changes:
-      #		     action    => $3,
-      #		     time      => $self->parse_time( $4 ),
-      #		     user_id   => $5,
-		     type      => $6,
-      #		     comment   => '',
-		  ) ;
-		  $old_r = $br ;
-
-		  ## Don't bother getting the comment or labels
-		  debug(
-		     sprintf(
-			"vcp: queueing base rev %s#%s @%s (%s)",
-			map $br->$_, qw( name rev_id change_id type )
-		     )
-		  ) if debugging $self ;
-		  $self->revs->add( $br ) ;
-	       }
-	       else {
-		  debug "vcp: bootstrapping '$norm_name#", $r->rev_id
-		     if debugging $self ;
-	       }
-	    }
-	 }
-	       
-	 ## Eat a blank line, then all comment lines, including a terminating
-	 ## blank line after the comment.  The comment begins with a tab that
-	 ## we trim, as well.
-	 if ( $log =~ m{$filelog_comment_re}gc ) {
-	    if ( defined $1 ) {
-	       my $comment = $1 ;
-	       $comment =~ s/^\s//gm ;
-	       $comment =~ s/\r\n|\n\r/\n/g ;
-	       $r->comment( $comment ) ;
-	    }
-	 }
-	 else {
-	    warn
-	    "vcp: No comment parsed for $name#", $r->rev_id,
-	    ' @', $r->change_id ;
-	 }
-	 $r->labels( $self->get_p4_file_labels( $r->name, $r->rev_id ) );
-         if ( $r->change_id eq $change_id
-	    && ( ! $old_r || $old_r->rev_id ne $r->rev_id )
-	 ) {
-	    debug(
-	       sprintf(
-		  "vcp: queueing %s#%s @%s %s %s %s (%s)\n%s",
-		  map(
-		     $r->$_,
-		     qw(name rev_id change_id action time user_id type comment)
-		  )
-	       )
-	    ) if debugging $self ;
-	    $self->revs->add( $r ) ;
-	 }
-	 else {
-	    die $r->as_string, " ??? ", $old_r->as_string ;
 	 }
       }
    }
@@ -465,13 +495,6 @@ sub filespec {
    my VCP::Source::p4 $self = shift ;
    $self->{P4_FILESPEC} = shift if @_ ;
    return $self->{P4_FILESPEC} ;
-}
-
-
-sub cur {
-   my VCP::Source::p4 $self = shift ;
-   $self->{P4_CUR} = shift if @_ ;
-   return $self->{P4_CUR} ;
 }
 
 
@@ -522,16 +545,17 @@ sub get_p4_file_labels {
    if ( ! exists $self->{P4_LABEL_CACHE}->{$name} && @$labels ) {
       my $files = '' ;
       my $errors = '' ;
+
       $self->p4(
          ['files', map $self->denormalize_name( $name ) . "\@$_", @$labels ],
 	    '>', \$files,
-	    '2>', \$errors,
+            '2>', \$errors,
+	    '&', timeout( 60 ),
       );
 
       ## Build a list of labels that don't match, so we can skip them
       ## when scanning stdout.
       my %no_match = map { ( $_ => 1 ) } $errors =~ /\@(\S+)/g ;
-
       my @labels = grep ! exists $no_match{$_}, @$labels ;
 
       for ( split( /^/m, $files ) ) {
@@ -558,34 +582,104 @@ sub get_p4_file_labels {
 }
 
 
-sub get_rev {
+#sub get_rev {
+#   my VCP::Source::p4 $self = shift ;
+#
+#   my VCP::Rev $r ;
+#   ( $r ) = @_ ;
+#
+#   my $fn  = $r->name ;
+#   my $rev = $r->rev_id ;
+#   $r->work_path( $self->work_path( $fn, $rev ) ) ;
+#   my $wp  = $r->work_path ;
+#   $self->mkpdir( $wp ) ;
+#
+#   ## TODO: Don't filter non-text files.
+#   ## TODO: Consider using a 'p4 sync' command to restore the modification
+#   ## time so we can capture it.
+#   $self->p4(
+#      [ 'print', $self->denormalize_name( $fn ) . "#$rev" ],
+#      '|', sub {
+#         @ARGV = () ;   ## Make this a STDIN filter.
+#         <> ;           ## Throw away the first line, a p4 file header line
+#	 while (<>) {
+#	    print ;
+#	 }
+#	 close STDOUT ;
+#	 ## TODO: Rework this to get rid of dependancy on Unix signals
+#	 kill 9, $$ ;   ## Exit without running DESTRUCTs.
+#      },
+#      '>', $wp,
+#   ) ;
+#
+#   return ;
+#}
+#
+#
+sub get_revs {
    my VCP::Source::p4 $self = shift ;
 
-   my VCP::Rev $r ;
-   ( $r ) = @_ ;
+   my ( @revs ) = @_ ;
 
-   my $fn  = $r->name ;
-   my $rev = $r->rev_id ;
-   $r->work_path( $self->work_path( $fn, $rev ) ) ;
-   my $wp  = $r->work_path ;
-   $self->mkpdir( $wp ) ;
+   return unless @revs ;
+
+   my @dispatcher_args ;
+   my @rev_specs ;
+
+   for my VCP::Rev $r ( @revs ) {
+      next if defined $r->action && $r->action eq "delete" ;
+      my $fn  = $r->name ;
+      my $rev = $r->rev_id ;
+      $r->work_path( $self->work_path( $fn, $rev ) ) ;
+      my $wp  = $r->work_path ;
+      $self->mkpdir( $wp ) ;
+
+      my $denormalized_name = $self->denormalize_name( $fn ) ;
+      my $rev_spec = "$denormalized_name#$rev" ;
+
+      push @dispatcher_args, $rev_spec, $wp ;
+      push @rev_specs, $rev_spec ;
+   }
 
    ## TODO: Don't filter non-text files.
    ## TODO: Consider using a 'p4 sync' command to restore the modification
    ## time so we can capture it.
-   $self->p4(
-      [ 'print', $self->denormalize_name( $fn ) . "#$rev" ],
-      '|', sub {
-         @ARGV = () ;   ## Make this a STDIN filter.
-         <> ;           ## Throw away the first line, a p4 file header line
-	 while (<>) {
-	    print ;
+   my $dispatch_prog = <<'EOPERL' ;
+      use strict ;
+      my ( $name, $working_path ) = ( shift, shift ) ;
+      my $re = quotemeta( $name . " - " ) . ".* change \\d+ \\(\\w+\\)";
+      my $found_header ;
+      my $found_this_header ;
+      while (<STDIN>) {
+	 if ( defined $re && /^$re/ ) {
+	    $found_header = 1 ;
+	    $found_this_header = 1 ;
+	    open( STDOUT, ">$working_path" )
+	       or die ">$working_path" ;
+	    if ( @ARGV ) {
+	       ( $name, $working_path ) = ( shift, shift ) ;
+	       $re = quotemeta( $name . " - " ) . ".* change \\d+ \\(\\w+\\)";
+	       $found_this_header = 0 ;
+	    }
+	    else {
+	       undef $re ;
+	    }
+	    next ;
 	 }
-	 close STDOUT ;
-	 ## TODO: Rework this to get rid of dependancy on Unix signals
-	 kill 9, $$ ;   ## Exit without running DESTRUCTs.
-      },
-      '>', $wp,
+	 die "No header found" unless $found_header ;
+	 print ;
+      }
+
+      unshift @ARGV, ( $name, $working_path ) unless $found_this_header ;
+
+      die "Did not find ", @ARGV / 2, " files in p4 print output\n",
+         join( '', map "'$_'\n", @ARGV )
+         if @ARGV ;
+EOPERL
+
+   $self->p4(
+      [ 'print', @rev_specs ],
+      '|', [ $^X, "-we", $dispatch_prog, @dispatcher_args ]
    ) ;
 
    return ;
@@ -610,21 +704,25 @@ sub copy_revs {
 
    $self->revs( VCP::Revs->new ) ;
 
-   for (
-      $self->cur( $self->min ) ;
-      $self->cur <= $self->max ;
-      $self->cur( $self->cur + 1 )
-   ) {
-      $self->lookup_revs_in_change( $self->cur ) ;
-   }
-
+   $self->scan_filelog( $self->min, $self->max ) ;
    $self->dest->sort_revs( $self->revs ) ;
 
    my VCP::Rev $r ;
+   my @bundle_o_revs ;
+   my %bundled_rev_names ;
    while ( $r = $self->revs->shift ) {
-      $self->get_rev( $r ) ;
-      $self->dest->handle_rev( $r ) ;
+      if ( exists $bundled_rev_names{$r->name} ) {
+         $self->get_revs( @bundle_o_revs ) ;
+	 $self->dest->handle_rev( $_ ) for @bundle_o_revs ;
+	 @bundle_o_revs = () ;
+	 %bundled_rev_names = () ;
+      }
+      push @bundle_o_revs, $r ;
+      $bundled_rev_names{$r->name} = undef ;
    }
+
+   $self->get_revs( @bundle_o_revs ) ;
+   $self->dest->handle_rev( $_ ) for @bundle_o_revs ;
 }
 
 

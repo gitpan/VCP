@@ -267,8 +267,8 @@ sub usage_and_exit {
 Returns the full path to the working copy of the local filename.
 
 Each VCP::Plugin gets thier own hierarchy to use, usually rooted at
-a directory named /tmp/vcp/plugin-source-foo/ for a module
-VCP::Plugin::Source::foo.
+a directory named /tmp/vcp$$/plugin-source-foo/ for a module
+VCP::Plugin::Source::foo.  $$ is vcp's process ID.
 
 This is typically $work_root/$filename/$rev, but this may change.
 $rev is put last instead of first in order to minimize the overhead of
@@ -388,11 +388,14 @@ sub rm_work_path {
    $self->work_root( $new_root ) ;
    $self->work_root( $new_root, $dir1, $dir2, .... ) ;
 
-Gets/sets the work root.  This defaults to File::Spec->tmpdir . "/revex",
-but may be altered.  If you set it to a relative path, the current working
+Gets/sets the work root.  This defaults to
+
+   File::Spec->tmpdir . "/vcp$$/" . $plugin_name
+
+but may be altered.  If set to a relative path, the current working
 directory is prepended.  The returned value is always absolute, and will
 not change if you chdir().  Depending on the operating system, however,
-it might not be locked on to the current volume.  If not, it's a bug,
+it might not be located on to the current volume.  If not, it's a bug,
 please patch away.
 
 =cut
@@ -803,7 +806,7 @@ sub AUTOLOAD {
 	 $childs_stderr .= "\n" unless substr( $childs_stderr, -1 ) eq "\n" ;
 	 push (
 	    @errors,
-	    "vcp: unexpected stdout from '$cmdname':\n",
+	    "vcp: unexpected stderr from '$cmdname':\n",
 	    $childs_stderr,
 	 ) ;
       }
