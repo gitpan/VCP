@@ -1,5 +1,17 @@
 CHANGES for vcp - Version CoPy
 
+0.03 Sun Dec 10 13:14:07 EST 2000
+   - Cleaned up VCP::Source::p4 a bit.  It doesn't whine as much now
+     when it sees what it considers to be old news in the log file.
+   - Added an easy way to monitor the commands being issued to a
+     repository: simply add "::cmd" to the debug spec for that source:
+
+	vcp -d Source::cvs::cvs
+        vcp -d Dest::p4::p4
+
+   - The next step is to use the -m option to p4 filelog to speed things
+     up.
+
 0.02 Tue Dec  5 01:20:31 EST 2000
    - VCP::Dest::p4 now does change number aggregation based on the
      comment field changing or whenever a new revision of a file with

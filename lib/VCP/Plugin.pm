@@ -769,7 +769,7 @@ sub AUTOLOAD {
       unless grep $_ eq '<', @redirs ;
 
    debug "vcp: running ", join( ' ', $self->command, @$args )
-      if debugging $self ;
+      if debugging $self, join( '::', ref $self, $cmd ) ;
    
    my $h = IPC::Run::harness(
       [ $self->command, @$args ],

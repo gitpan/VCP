@@ -267,8 +267,30 @@ sub is_incremental {
 #        Got Dest/cvs working, lots of small changes elsewhere
 #
 #-------8<-------8<------
-
-# This next regexp is used to parse the line beginning "..."
+# And, from a more tangled source tree, perl itself:
+#-------8<-------8<------
+#... ... branch into //depot/ansiperl/x2p/a2p.h#1
+#... ... ignored //depot/maint-5.004/perl/x2p/a2p.h#1
+#... ... copy into //depot/oneperl/x2p/a2p.h#3
+#... ... copy into //depot/win32/perl/x2p/a2p.h#2
+#... #2 change 18 integrate on 1997/05/25 by mbeattie@localhost (text)
+#
+#        First stab at 5.003 -> 5.004 integration.
+#
+#... ... branch into //depot/lexwarn/perl/x2p/a2p.h#1
+#... ... branch into //depot/oneperl/x2p/a2p.h#1
+#... ... copy from //depot/relperl/x2p/a2p.h#2
+#... ... branch into //depot/win32/perl/x2p/a2p.h#1
+#... #1 change 1 add on 1997/03/28 by mbeattie@localhost (text)
+#
+#        Perl 5.003 check-in
+#
+#... ... branch into //depot/mainline/perl/x2p/a2p.h#1
+#... ... branch into //depot/relperl/x2p/a2p.h#1
+#... ... branch into //depot/thrperl/x2p/a2p.h#1
+#-------8<-------8<------
+#
+# This next regexp is used to parse the lines beginning "... #"
 
 my $filelog_rev_info_re = qr{
    \G                  # Use with /gc!!
@@ -281,6 +303,14 @@ my $filelog_rev_info_re = qr{
    \S+\s+              ### 'by '
    (\S(?:.*?\S))\s+    # user id.  Undelimited, so hope for best
    \((\S+?)\)          # type
+   .*\r?\n\r?
+}mx ;
+
+# This re matches "... ...", if the previous re doesn't match.
+#
+my $filelog_etc_re = qr{
+   \G                  # Use with /gc!!
+   ^\.\.\.\s+\.\.\.
    .*\r?\n\r?
 }mx ;
 
@@ -314,7 +344,10 @@ sub lookup_revs_in_change {
       warn "vcp: Ignoring '$1' in p4 filelog output\n" if length $1 ;
       my $name = $2 ;
       my $norm_name = $self->normalize_name( $name ) ;
-      while ( $log =~ m{$filelog_rev_info_re}gc ) {
+      while () {
+         next if $log =~ m{$filelog_etc_re}gc ;
+         last unless $log =~ m{$filelog_rev_info_re}gc ;
+
 	 my VCP::Rev $r = VCP::Rev->new(
 	    name      => $norm_name,
 	    rev_id    => $1,
@@ -327,10 +360,13 @@ sub lookup_revs_in_change {
 	 ) ;
 
 	 if ( $r->change_id != $change_id ) {
-	    ## This rule fires on 'deleted' files that were deleted
-	    ## in older changes.
-	    warn "Unexpected action '", $r->action, "'" 
-	       unless $r->action eq 'delete' ;
+	    debug(
+	       "ignoring change '",
+	       $r->change_id,
+	       "' '",
+	       $r->action,
+	       "' for '$spec'" 
+	    ) if debugging $self ;
 	    $log =~ m{$filelog_comment_re}gc ;
 	    next ;
 	 }
@@ -416,6 +452,9 @@ sub lookup_revs_in_change {
 	       )
 	    ) if debugging $self ;
 	    $self->revs->add( $r ) ;
+	 }
+	 else {
+	    die $r->as_string, " ??? ", $old_r->as_string ;
 	 }
       }
    }
