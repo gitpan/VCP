@@ -5,6 +5,8 @@ future feature ideas.  This file will grow to include the more important
 of those.
 
 - Bugfixes
+  - Prevent keyword expansion on all checkouts.  Found by
+    Thomas Quinot <quinot@inf.enst.fr>
   - Check for p4 >= 99.2 at runtime, since filelog -m is needed
   - Carry executable bit through (Nick Ing-Simmons)
   - Make <rev_root> and <name> escape their characters
@@ -24,9 +26,27 @@ of those.
   - Offer compressed output for revml files a la tar's "z" option.
   - Consider offering <char code=0x00 repeat=34234> (david d zuhn
     <zoo@bravara.com>)
+  - Perhaps allow keyword expansion, but convert the expanded texts
+    so that they are no longer seens as RCS style keywords.  This would
+    allow imported files to have a "stamp of origin" in them.  Would
+    also need an option to leave the keywords in place in this case, since
+    the user might presumably want expansion to work correctly in the
+    new repository too.  Suggested by Thomas Quinot <quinot@inf.enst.fr>.
+  - Add a link checker to vcp html
+  - An option to not bring over deleted files Steve James <SJames@ariba.com>
+  - A report destination that offers a preview of what a transfer
+    will do, with summary and long views.
+  - An option to prefix all labels with some user-defined string Steve James
+    <SJames@ariba.com>
+  - Limit the number of NtLkLy queries per command to prevent server lockup.
+    Steve James <SJames@ariba.com>  (possibly URGENT, need to test).
+
+
 
 - Efficiency
   - The cvs drivers can be made faster
+  - VCP::Source::revml should only reconstitute what it needs in order
+    to conserve disk space.
 
 - Tests
   - rerooting revml->p4 to someplace deep in the p4 tree, to make sure that VCP

@@ -17,32 +17,12 @@ To compile a DTD in to a perl module:
 
 =head1 DESCRIPTION
 
-This reads a revml file and reconstitutes every revision of every file
-fond therein on the disk and then submits them to the destination.
+This source driver allows L<vcp|vcp> to read a RevML file.
 
-This can require a huge amount of disk space, but it works.  Disk usage
-can be optimised later by only reconstituting the files two revisions
-at a time (the previous revision is needed to generate the current one)
-as the revs are submitted to the destination after they are sorted
-(by the dest).
-
-When that happens, we need to bear in mind that
-the revml file will be in the default sort order defined by L<VCP::Dest>
-and this may be changed by other destinations, particularly the change
-set oriented ones like p4.  As an example, imagine the following process:
-
-   cvs -> vcp -> foo.revml -> vcp -> p4
-
-There is some chance that L<VCP::Dest::p4> will want to reorder the
-revisions in foo.revml in order to attemp change set aggregation.  This means
-that it may ask for the revs in a different order than they are found in
-the file.  Since the default sort order *should* put the foo.revml file
-in (roughly) change set order.  This is a bad example, I guess, but hey,
-just watch out when optimizing for disk space.
-
-=head1 EXTERNAL METHODS
-
-=over
+For now, all revisions are fully reconstituted in the working
+directory in order to make sure that all of the patches apply cleanly.
+This can require a huge amount of disk space, but it works (optimizing
+this is on the TODO).
 
 =cut
 
@@ -84,18 +64,18 @@ use fields (
 ) ;
 
 
-=item new
-
-Creates a new instance.  The only parameter is '-dtd', which overrides
-the default DTD found by searching for modules matching RevML::DTD:v*.pm.
-
-Attempts to open the input file if one is specified.
-
-If the option '--save-doctype' is passed, then no copying of resources
-is done (queue_all returns nothing to copy) and the doctype is saved
-as a .pm file.  See L<RevML::Doctype> for details.
-
-=cut
+#=item new
+#
+#Creates a new instance.  The only parameter is '-dtd', which overrides
+#the default DTD found by searching for modules matching RevML::DTD:v*.pm.
+#
+#Attempts to open the input file if one is specified.
+#
+#If the option '--save-doctype' is passed, then no copying of resources
+#is done (queue_all returns nothing to copy) and the doctype is saved
+#as a .pm file.  See L<RevML::Doctype> for details.
+#
+#=cut
 
 sub new {
    my $class = shift ;
@@ -374,7 +354,10 @@ sub start_content {
    $self->{UNDECODED_CONTENT} = "" ;
    sysopen $self->{WORK_FH}, $self->{WORK_NAME}, O_WRONLY | O_CREAT | O_TRUNC
       or die "$!: $self->{WORK_NAME}" ;
-
+   ## The binmode here is to make sure we don't convert \n to \r\n and
+   ## to allow ^Z out the door (^Z is EOF on windows, and they take those
+   ## things rather more seriously there than on Unix).
+   binmode $self->{WORK_FH};
 }
 
 
@@ -424,6 +407,8 @@ sub start_delta {
    $self->{WORK_NAME} = $self->work_path( $r->name, 'delta' ) ;
    sysopen $self->{WORK_FH}, $self->{WORK_NAME}, O_WRONLY | O_CREAT | O_TRUNC
       or die "$!: $self->{WORK_NAME}" ;
+   ## See comment in start_content :)
+   binmode $self->{WORK_FH};
 }
 
 
@@ -453,7 +438,9 @@ sub end_delta {
    if ( -s $self->{WORK_NAME} ) {
       ## source fn, result fn, patch fn
       vcp_patch( $saw->work_path, $r->work_path, $self->{WORK_NAME} );
-      unlink $self->{WORK_NAME} or warn "$! unlinking $self->{WORK_NAME}\n" ;
+      unless ( $ENV{VCPNODELETE} ) {
+         unlink $self->{WORK_NAME} or warn "$! unlinking $self->{WORK_NAME}\n" ;
+      }
    }
    else {
       ## TODO: Don't assume working link()
@@ -498,7 +485,6 @@ sub end_time {
 ## TODO: workaround backfilling if the destination is revml, since
 ## it can't put the original content in place.  We'll need to flag
 ## some kind of special pass-through mode for that.
-##
 
 sub end_digest {
    my VCP::Source::revml $self = shift ;
@@ -523,6 +509,8 @@ sub end_digest {
 
    sysopen F, $work_path, O_RDONLY
       or die "vcp: $! opening '$work_path' for digestion\n" ;
+   ## See comment for binmode in start_content :)
+   binmode F;
    $d->addfile( \*F ) ;
    close F ;
    my $reconstituted_digest = $d->b64digest ;
@@ -544,7 +532,9 @@ sub end_digest {
 	 "\nvcp: failed to leave copy in '$reject_file_path': $!\n" ;
 
       die "vcp: digest check failed for ", $r->as_string,
-	 "\nvcp: copy left in '$reject_file_path'\n" ;
+	 "\nvcp: copy left in '$reject_file_path'\n",
+         "got      digest: $reconstituted_digest\n",
+         "expected digest: $original_digest\n";
    }
 }
 
@@ -561,21 +551,16 @@ sub end_rev {
 }
 
 
-
-
-=back
-
-=head1 COPYRIGHT
-
-Copyright 2000, Perforce Software, Inc.  All Rights Reserved.
-
-This module and the VCP package are licensed according to the terms given in
-the file LICENSE accompanying this distribution, a copy of which is included in
-L<vcp>.
-
 =head1 AUTHOR
 
 Barrie Slaymaker <barries@slaysys.com>
+
+=head1 COPYRIGHT
+
+Copyright (c) 2000, 2001, 2002 Perforce Software, Inc.
+All rights reserved.
+
+See L<VCP::License|VCP::License> (C<vcp help license>) for the terms of use.
 
 =cut
 

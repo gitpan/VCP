@@ -154,6 +154,7 @@ sub vcp_patch {
 
    while ( <PATCH> =~ /(.)(.*?\n)/ ) {
       my ( $fchar, $patch_line ) = ( $1, $2 );
+debug "patch line: $fchar$patch_line";
       if ( $fchar eq '@' ) {
          $patch_line =~ /^\@ -(\d+)(?:,\d+)? [+-]\d+(,\d+)? \@\@/
              or croak "Can't parse line: '$fchar$patch_line'.";
@@ -163,6 +164,7 @@ sub vcp_patch {
             croak "Ran off end of source file at line $source_pos"
                unless defined $source_line;
             print RESULT $source_line;
+debug "==$source_line";
             ++$source_pos;
          }
       }
@@ -170,10 +172,13 @@ sub vcp_patch {
          my $source_line = <SOURCE>;
          croak "Ran off end of source file at line $source_pos"
             unless defined $source_line;
-         croak "Patch line disagrees with source line $source_pos:\n",
-            "source: ", $source_line,
-            "patch : ", $patch_line
-            unless $source_line eq $patch_line;
+         unless ( $source_line eq $patch_line ) {
+            $source_line =~ s/([\000-\037])/sprintf "\\x%02x", ord $1/ge;
+            $patch_line  =~ s/([\000-\037])/sprintf "\\x%02x", ord $1/ge;
+            croak "Patch line disagrees with source line $source_pos:\n",
+               "source:\"", $source_line, "\"\n",
+               "patch :\"", $patch_line , "\"\n";
+         }
          ++$source_pos;
       }
       elsif ( $fchar eq ' ' ) {
@@ -196,6 +201,7 @@ sub vcp_patch {
 
    close SOURCE or croak "$!: $source_fn" ;
    close RESULT or croak "$!: $result_fn" ;
+   close PATCH  or croak "$!: $patch_fn" ;
    return 1 ;
 }
 

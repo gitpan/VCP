@@ -6,7 +6,7 @@ VCP::Source::cvs - A CVS repository source
 
 =head1 SYNOPSIS
 
-   vcp cvs:module/... -d ">=2000-11-18 5:26:30"
+   vcp cvs:module/... -d ">=2000-11-18 5:26:30" <dest>
                                   # All file revs newer than a date/time
 
    vcp cvs:module/... -r foo      # all files in module and below labelled foo
@@ -19,23 +19,23 @@ VCP::Source::cvs - A CVS repository source
 
 =head1 DESCRIPTION
 
-Reads a CVS repository.
+Source driver enabling L<C<vcp>|vcp> to extract versions form a cvs
+repository.
 
-B<NOTE:> You no longer need to check the desired files out in to a local
-directory.  VCP::Source::cvs now creates it's own checkout for two reasons:
-it's easier and less coupled to the user's system and it's less likely to be in
-some unknown state that causes odd behaviors due to sticky tags, etc. If you do
-want to use a workspace, see the --cd option.
+This doesn't deal with branches yet (at least not intentionally).  That
+will require a bit of Deep Thought.
 
-This module in alpha.
+The source specification for CVS looks like:
 
-This doesn't deal with branches yet (at least not intentionally).  That will
-require a bit of Deep Thought.
+    cvs:cvsroot/filespec [<options>]
 
-This only deals with filespecs with trailing wildcards, like "/a/b/c" or
-"a/b/..." for now.  Later, we can handle filespecs with embedded wildcards
-by logging all possible files and applying the wildcards to the files
-cvs emits, probably using Regexp::Shellish.
+where the C<cvsroot> is passed to C<cvs> with the C<-d> option if
+provided (C<cvsroot> is optional if the environment variable C<CVSROOT>
+is set) and the filespec and E<lt>optionsE<gt> determine what revisions
+to extract.
+
+C<filespec> may contain trailing wildcards, like C</a/b/...> to extract
+an entire directory tree.
 
 =head1 OPTIONS
 
@@ -43,28 +43,32 @@ cvs emits, probably using Regexp::Shellish.
 
 =item -b, --bootstrap
 
-   -b '**'
-   --bootstrap='**'
-   -b file1[,file2[,...]]
-   --bootstrap=file1[,file2[,...]]
+   -b ...
+   --bootstrap=...
+   -b file1[,file2[, etc.]]
+   --bootstrap=file1[,file2[, etc. ]]
 
-Forces bootstrap mode for an entire export (-b '**') or for
-certain files.  Filenames may contain wildcards, see L<Regexp::Shellish>
-for details on what wildcards are accepted.  For now, one thing to
-remember is to use '**' instead of p4's '...' wildcard.
+(the C<...> there is three periods, a
+L<Regexp::Shellish|Regexp::Shellish> wildcard borrowed from C<p4>
+path syntax).
+
+Forces bootstrap mode for an entire export (C<-b ...>) or for certain
+files.  Filenames may contain wildcards, see L<Regexp::Shellish> for
+details on what wildcards are accepted.
 
 Controls how the first revision of a file is exported.  A bootstrap
-export contains the entire contents of the first revision in the revision
-range.  This should only be used when exporting for the first time.
+export contains the entire contents of the first revision in the
+revision range.  This should only be necessary when exporting for the
+first time.
 
-An incremental export contains a digest of the revision preceding the first
-revision in the revision range, followed by a delta record between that
-revision and the first revision in the range.  This allows the destination
-import function to make sure that the incremental export begins where the
-last export left off.
+An incremental export contains a digest of the revision preceding the
+first revision in the revision range, followed by a delta record between
+that revision and the first revision in the range.  This allows the
+destination import function to make sure that the incremental export
+begins where the last export left off.
 
 The default is decided on a per-file basis: if the first revision in the
-range is revision #1, the full contents are exported.  Otherwise an
+range is revision #.1, the full contents are exported.  Otherwise an
 incremental export is done for that file.
 
 This option is necessary when exporting only more recent revisions from
@@ -73,35 +77,54 @@ a repository.
 =item --cd
 
 Used to set the CVS working directory.  VCP::Source::cvs will cd to this
-directory before calling cvs, and won't initialize a CVS workspace of it's own
-(normally, VCP::Source::cvs does a "cvs checkout" in a temporary directory).
+directory before calling cvs, and won't initialize a CVS workspace of
+it's own (normally, VCP::Source::cvs does a "cvs checkout" in a
+temporary directory).
 
-This is an advanced option that allows you to use a CVS workspace you establish
-instead of letting vcp create one in a temporary directory somewhere.  This is
-useful if you want to read from a CVS branch or if you want to delete some
-files or subdirectories in the workspace.
+This is an advanced option that allows you to use a CVS workspace you
+establish instead of letting vcp create one in a temporary directory
+somewhere.  This is useful if you want to read from a CVS branch or if
+you want to delete some files or subdirectories in the workspace.
 
-If this option is a relative directory, then it is treated as relative to
-the current directory.
+If this option is a relative directory, then it is treated as relative
+to the current directory.
+
+=item -kb, -k b
+
+Pass the -kb option to cvs.exe, forces a binary checkout.  This is
+useful when you want a text file to be checked out with Unix linends,
+or if you know that some files in the repository are not flagged as
+binary files and should be.
 
 =item --rev-root
 
 B<Experimental>.
 
-Sets the root of the source tree to export.  All files to be exported
-must be under this root directory.  The default rev-root is all of the
-leading non-wildcard directory names.  This can be useful in the unusual
-case of exporting a sub-tree of a larger project.  I think.
+Falsifies the root of the source tree being extracted; files will
+appear to have been extracted from some place else in the hierarchy.
+This can be useful when exporting RevML, the RevML file can be made
+to insert the files in to a different place in the eventual destination
+repository than they existed in the source repository.
+
+The default C<rev-root> is the file spec up to the first path segment
+(directory name) containing a wildcard, so
+
+   cvs:/a/b/c...
+
+would have a rev-root of C</a/b>.
+
+In direct repository-to-repository transfers, this option should not be
+necessary, the destination filespec overrides it.
 
 =item -r
 
    -r v_0_001:v_0_002
    -r v_0_002:
 
-Passed to 'cvs log' as a '-r' revision specification. This corresponds to the
--r option for the rlog command, not either of the -r options for the cvs
-command. Yes, it's confusing, but 'cvs log' calls 'rlog' and passes the
-options through.
+Passed to C<cvs log> as a C<-r> revision specification. This corresponds
+to the C<-r> option for the rlog command, not either of the C<-r>
+options for the cvs command. Yes, it's confusing, but 'cvs log' calls
+'rlog' and passes the options through.
 
 IMPORTANT: When using tags to specify CVS file revisions, it would ordinarily
 be the case that a number of unwanted revisions would be selected.  This is
@@ -114,31 +137,40 @@ Be cautious using HEAD as the end of a revision range, this seems to cause the
 delete actions for files deleted in the last revision to not be noticed. Not
 sure why.
 
-One of -r or L</-d> must be specified.
+One of C<-r> or L<C<-d>|-d> must be specified.
 
-=item -d
+=item C<-d>
 
    -d "2000-11-18 5:26:30<="
 
-Passed to 'cvs log' as a '-d' date specification. 
+Passed to 'cvs log' as a C<-d> date specification. 
 
-WARNING: if this
-string doesn't contain a '>' or '<', you're probably doing something wrong,
-since you're not specifying a range.  vcp may warn about this
+WARNING: if this string doesn't contain a '>' or '<', you're probably doing
+something wrong, since you're not specifying a range.  vcp may warn about this
 in the future.
 
-One of L</-r> or -d must be specified.
+One of L<C<-r>|-r> or C<-d> must be specified.
 
 =back
+
+=head2 Files that aren't tagged
+
+CVS has one peculiarity that this driver works around.
+
+If a file does not contain the tag(s) used to select the source files,
+C<cvs log> outputs the entire life history of that file.  We don't want
+to capture the entire history of such files, so L<VCP::Source::cvs> goes
+ignores any revisions before and after the oldest and newest tagged file
+in the range.
 
 =head1 LIMITATIONS
 
    "What we have here is a failure to communicate!"
        - The warden in Cool Hand Luke
 
-CVS does not try to protect itself from people checking in things that look
-like snippets of CVS log file: they go in Ok, and they come out Ok, screwing up
-the parser.
+CVS does not try to protect itself from people checking in things that
+look like snippets of CVS log file: they come out exactly like they
+went in, confusing the log file parser.
 
 So, if a repository contains messages in the log file that look like the 
 output from some other "cvs log" command, things will likely go awry.
@@ -196,6 +228,8 @@ use fields (
    'CVS_DATE_SPEC',      ## The date spec to pass to `cvs log`
    'CVS_FORCE_MISSING',  ## Set if -r was specified.
 
+   'CVS_K_OPTION',       ## Which of the CVS/RCS "-k" options to use, if any
+
    'CVS_LOG_CARRYOVER',  ## The unparsed bit of the log file
    'CVS_LOG_FILE_DATA',  ## Data about all revs of a file from the log file
    'CVS_LOG_STATE',      ## Parser state machine state
@@ -230,21 +264,21 @@ sub new {
    my $rev_root ;
    my $rev_spec ;
    my $date_spec ;
-   my $force_missing ;
+   #   my $force_missing ;
 
-##TODO: Add option to Regexp::Shellish to allow '...' instead of or in
-## addition to '**'.
    GetOptions(
       "b|bootstrap:s"   => sub {
 	 my ( $name, $val ) = @_ ;
 	 $self->{CVS_BOOTSTRAP} = $val eq ""
-	    ? [ compile_shellish( "**" ) ]
+	    ? [ compile_shellish( "..." ) ]
 	    : [ map compile_shellish( $_ ), split /,+/, $val ] ;
       },
       "cd=s"          => \$work_dir,
       "rev-root=s"    => \$rev_root,
       "r=s"           => \$rev_spec,
       "d=s"           => \$date_spec,
+      "k=s"           => sub { warn $self->{CVS_K_OPTION} = $_[1] } ,
+      "kb"            => sub { warn $self->{CVS_K_OPTION} = "b" } ,
 #      "f+"            => \$force_missing,
    ) or $self->usage_and_exit ;
 
@@ -283,7 +317,14 @@ sub new {
 
    ## Make sure the cvs command is available
    $self->command_stderr_filter(
-      qr{^(?:cvs (?:server|add|remove): use 'cvs commit' to.*)\n}
+      qr{^
+         (?:cvs\s
+             (?:
+                (?:server|add|remove):\suse\s'cvs\scommit'\sto.*
+                |tag.*(?:waiting for.*lock|obtained_lock).*
+             )
+        )\n
+      }x
    ) ;
 
    ## Doing a CVS command or two here also forces cvs to be found in new(),
@@ -407,15 +448,17 @@ sub copy_revs {
    my $ignore_file = sub {
       exists $ignore_files{$self->{CVS_NAME_REP_NAME}->{$_[0]}} ;
    } ;
+
+   ## This regexp needs to gobble newlines.
    $self->command_stderr_filter( sub {
       my ( $err_text_ref ) = @_ ;
       $$err_text_ref =~ s@
-         ^cvs\slog:\swarning:\sno\srevision\s.*?\sin\s[`"'](.*)[`"']\n
+         ^cvs(?:\.exe)?\slog:\swarning:\sno\srevision\s.*?\sin\s[`"'](.*)[`"']\r?\n\r?
       @
          $ignore_files{$1} = undef ;
 	 '' ;
-      @gxme ;
-   } ) ;
+      @gxmei ;
+   } ) ; ## `
 
    $self->{CVS_LOG_FILE_DATA} = {} ;
    $self->{CVS_LOG_REV} = {} ;
@@ -433,6 +476,7 @@ sub copy_revs {
       ],
       '>', sub { $self->parse_log_file( @_ ) },
    ) ;
+
    $self->command_chdir( $tmp_command_chdir ) ;
    $self->command_stderr_filter( $tmp_f ) ;
 
@@ -785,26 +829,6 @@ sub _add_rev {
    }
 }
 
-
-=head1 SUBCLASSING
-
-This class uses the fields pragma, so you'll need to use base and 
-possibly fields in any subclasses.
-
-=head1 COPYRIGHT
-
-Copyright 2000, Perforce Software, Inc.  All Rights Reserved.
-
-This module and the VCP package are licensed according to the terms given in
-the file LICENSE accompanying this distribution, a copy of which is included in
-L<vcp>.
-
-=head1 AUTHOR
-
-Barrie Slaymaker <barries@slaysys.com>
-
-=cut
-
 ## FOOTNOTES:
 # [1] :pserver:guest@cvs.tigris.org:/cvs hass some goofiness like:
 #----------------------------
@@ -845,5 +869,22 @@ Barrie Slaymaker <barries@slaysys.com>
 #
 #merge revision history for cvspatches/root/log_accum.in
 #
+
+=head1 SEE ALSO
+
+L<VCP::Dest::cvs>, L<vcp>, L<VCP::Process>.
+
+=head1 AUTHOR
+
+Barrie Slaymaker <barries@slaysys.com>
+
+=head1 COPYRIGHT
+
+Copyright (c) 2000, 2001, 2002 Perforce Software, Inc.
+All rights reserved.
+
+See L<VCP::License|VCP::License> (C<vcp help license>) for the terms of use.
+
+=cut
 
 1

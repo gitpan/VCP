@@ -36,6 +36,8 @@ Barrie Slaymaker <barries@slaysys.com>
 
 =cut
 
+use Text::Diff ;
+use VCP::DiffFormat ;
 use Getopt::Long ;
 use MIME::Base64 ;
 
@@ -154,16 +156,20 @@ my $binary_counter = 0 ;
 
 	 die "counter too big" if $counter > 254 ;
 
+	 my $char_num = $counter + 1;
+
+	 ## CVS on Win32 gets bummed out about ^Z in text files.
+	 $char_num++ if $^O =~ /Win32/ && $char_num == 26;
+
 	 my $content =  $name eq "binary" 
 	   ? chr( $binary_counter++ & 0x07 ) x 100
 	   : sprintf(
 	       qq{%s, revision %d, char 0x%02x="%s"\n},
 	       $name,
 	       $rev_num{$name},
-	       $counter + 1,
-	       chr( $counter + 1 ),
+	       $char_num,
+	       chr( $char_num ),
 	    ) ;
-
 
 	 $content = $content x 200 if $name eq "a_big_file" ;
 
@@ -283,6 +289,8 @@ my $prog = basename $0 ;
 my $f0 = "$prog.0" ;
 my $f1 = "$prog.1" ;
 
+binmode STDOUT ;
+
 setDataMode 1 ;
 
 xmlDecl ;
@@ -401,17 +409,12 @@ for my $rev_name ( @sorted_rev_names ) {
 	    else {
 	       print STDERR " delta" if $debug ;
 	       base_rev_id $pr->{rev_id} ;
-	       ## TODO: Migrate to a perl-coded diff -u
-	       open  R0, ">$f0"                   or die "$!: $f0" ; 
-	       print R0 $pr->{content}            or die "$!: $f0" ;
-	       close R0                           or die "$!: $f0" ;
-	       open  R1, ">$f1"                   or die "$!: $f1" ; 
-	       print R1 $r->{content}             or die "$!: $f1" ;
-	       close R1                           or die "$!: $f1" ;
-	       my $diff = `diff -a -u $f0 $f1` ;
-	       $diff =~ s/^.+?^.+?^//ms ;
 	       start_delta type => 'diff-u', encoding => 'none' ;
-	       _emit_characters $diff ;
+	       _emit_characters(
+                  diff \$pr->{content}, \$r->{content}, {
+                     STYLE => "VCP::DiffFormat",
+                  }
+               );
 	       end_delta ;
 	       setDataMode( 1 ) ;
 	    }

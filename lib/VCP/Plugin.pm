@@ -21,6 +21,7 @@ member, etc.
 use strict ;
 
 use Carp ;
+use Cwd ;
 use File::Basename ;
 use File::Path ;
 use File::Spec ;
@@ -72,7 +73,7 @@ sub new {
    }
 
    $self->work_root( $self->tmp_dir ) ;
-   rmtree $self->work_root if -e $self->work_root ;
+   rmtree $self->work_root if ! $ENV{VCPNODELETE} && -e $self->work_root ;
 
    $self->{SEEN} = {} ;
 
@@ -291,8 +292,13 @@ like "/tmp/vcp123/dest-p4".
 my %tmp_dirs ;
 
 END {
+   return unless keys %tmp_dirs;
+   ## This delay seems to be required to give NT a chance
+   ## to clean up the tmpdir, otherwise we get a
+   ## "permission denied error on Win32.
+   select undef, undef, undef, 0.01 if $^O =~ /Win32/ ;
    rmtree [ reverse sort { length $a <=> length $b } keys %tmp_dirs ]
-      if %tmp_dirs ;
+      if ! $ENV{VCPNODELETE} && %tmp_dirs ;
 }
 
 sub tmp_dir {
@@ -302,6 +308,14 @@ sub tmp_dir {
    $plugin_dir =~ s/^VCP:://i ;
    $plugin_dir =~ s/::/-/g ;
    my $tmp_dir_root = File::Spec->catdir( File::Spec->tmpdir, "vcp$$" ) ;
+
+   ## Make sure no old tmpdir is there to mess us up in case
+   ## a previous run crashed before cleanup or $ENV{VCPNODELETE} is set.
+   if ( ! $tmp_dirs{$tmp_dir_root} && -e $tmp_dir_root ) {
+      warn "Removing previous working directory $tmp_dir_root\n";
+      rmtree [$tmp_dir_root ], 0;
+   }
+
    $tmp_dirs{$tmp_dir_root} = 1 ;
    return File::Spec->catdir( $tmp_dir_root, $plugin_dir, @_ ) ;
 }
@@ -421,7 +435,12 @@ sub rm_work_path {
 
    if ( defined $path && -e $path ) {
       debug "vcp: rmtree $path" if debugging $self ;
-      rmtree $path or die "$!: $path" ;
+      if ( ! $ENV{VCPNODELETE} ) {
+         rmtree $path or warn "$!: $path"
+      }
+      else {
+         warn "Not removing working directory $path due to VCPNODELETE\n";
+      }
    }
 
    my $root = $self->work_root ;
@@ -818,21 +837,26 @@ sub run_safely {
       if debugging $self, join( '::', ref $self, $cmd->[0] ) ;
 
    my @init_sub ;
+   my $cwd ;
 
    if ( defined $self->command_chdir ) {
       $self->mkdir( $self->command_chdir )
 	 unless -e $self->command_chdir ;
 
-      @init_sub = (
-         init => sub {
-	    chdir $self->command_chdir
-	       or die "$! chdiring to ", $self->command_chdir
-	 }
-      ) ;
+      $cwd = cwd;
+
+      chdir $self->command_chdir or die "$!: ", $self->command_chdir ;
+      cwd;
+#      debug "now in ", cwd if debugging ;
    }
    
    my $h = IPC::Run::harness( $cmd, @redirs, @init_sub ) ;
    $h->run ;
+
+   if ( defined $cwd ) {
+      chdir $cwd or die "$!: $cwd" ;
+#      debug "now in ", cwd if debugging ;
+   }
 
    my @errors ;
 
@@ -893,7 +917,7 @@ sub DESTROY {
       eval { $self->rm_work_path() ; } ;
 
       warn "Unable to remove work directory '", $self->work_root, "'\n"
-	 if -d $self->work_root ;
+	 if ! $ENV{VCPNODELETE} && -d $self->work_root ;
    }
 }
 

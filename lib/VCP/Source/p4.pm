@@ -18,27 +18,28 @@ use this syntax:
 
    vcp p4:user(client)password@host:1666:files
 
-Note: the password will be passed in the environment variable P4PASSWD so it
-shouldn't show up in error messages. This means that a password specified in a
-P4CONFIG file will override the password you set on the command line. This is a
-bug.  User, client and the server string will be passed as command line options
-to make them show up in error output.
+Note: the password will be passed in the environment variable P4PASSWD
+so it shouldn't show up in error messages. This means that a password
+specified in a P4CONFIG file will override the password you set on the
+command line. This is a bug.  User, client and the server string will be
+passed as command line options to make them show up in error output.
 
-You may use the P4... environment variables instead of any or all
-of the fields in the p4: repository specification.  The repository
-spec overrides the environment variables.
+You may use the P4... environment variables instead of any or all of the
+fields in the p4: repository specification.  The repository spec
+overrides the environment variables.
 
 =head1 DESCRIPTION
 
-Reads a p4d.
+Driver to allow L<vcp|vcp> to extract files from a
+L<Perforce|http://perforce.com/> repository.
 
-Note that not all metadata is exported: labels and users are not exported
-as of yet.  This stuff will go in to the RevML at some point.
+Note that not all metadata is extracted: users, clients and job tracking
+information is not exported, and only label names are exported.
 
 Also, the 'time' and 'mod_time' attributes will lose precision, since
 p4 doesn't report them down to the minute.  Hmmm, seems like p4 never
 sets a true mod_time.  It gets set to either the submit time or the
-sync time.  From `C<p4 help client>`:
+sync time.  From C<p4 help client>:
 
     modtime         Causes 'p4 sync' to force modification time 
 		    to when the file was submitted.
@@ -52,19 +53,22 @@ sync time.  From `C<p4 help client>`:
 
 =item -b, --bootstrap
 
-   -b '**'
-   --bootstrap='**'
+   -b '...'
+   --bootstrap='...'
    -b file1[,file2[,...]]
    --bootstrap=file1[,file2[,...]]
 
-Forces bootstrap mode for an entire export (-b '**') or for
-certain files.  Filenames may contain wildcards, see L<Regexp::Shellish>
-for details on what wildcards are accepted.  For now, one thing to
-remember is to use '**' instead of p4's '...' wildcard.
+(the C<...> there is three periods, a
+L<Regexp::Shellish|Regexp::Shellish> wildcard borrowed from C<p4>
+path syntax).
+
+Forces bootstrap mode for an entire export (-b '...') or for certain
+files.  Filenames may contain wildcards, see L<Regexp::Shellish> for
+details on what wildcards are accepted.
 
 Controls how the first revision of a file is exported.  A bootstrap
 export contains the entire contents of the first revision in the revision
-range.  This should only be used when exporting for the first time.
+range.  This should only be necessary when exporting for the first time.
 
 An incremental export contains a digest of the revision preceding the first
 revision in the revision range, followed by a delta record between that
@@ -81,10 +85,23 @@ a repository.
 
 =item -r, --rev-root
 
-Sets the root of the source tree to export.  All files to be exported
-must be under this root directory.  The default rev-root is all of the
-leading non-wildcard directory names.  This can be useful in the unusual
-case of exporting a sub-tree of a larger project.  I think.
+B<Experimental>.
+
+Falsifies the root of the source tree being extracted; files will
+appear to have been extracted from some place else in the hierarchy.
+This can be useful when exporting RevML, the RevML file can be made
+to insert the files in to a different place in the eventual destination
+repository than they existed in the source repository.
+
+The default C<rev-root> is the file spec up to the first path segment
+(directory name) containing a wildcard, so
+
+   p4:/a/b/c...
+
+would have a rev-root of C</a/b>.
+
+In direct repository-to-repository transfers, this option should not be
+necessary, the destination filespec overrides it.
 
 =back
 
@@ -136,15 +153,12 @@ sub new {
 
    my $rev_root ;
 
-##TODO: Add option to Regexp::Shellish to allow '...' instead of or in
-## addition to '**'.
-
    GetOptions(
       'b|bootstrap:s'   => sub {
 	 my ( $name, $val ) = @_ ;
 	 $self->bootstrap( $val ) ;
       },
-      'r|rev-root'      => \$rev_root,
+      'r|rev-root=s'    => \$rev_root,
       ) or $self->usage_and_exit ;
 
 
@@ -269,7 +283,7 @@ sub scan_filelog {
    my $spec =  join( '', $self->repo_filespec . '@' . $last_change_id ) ;
    my $temp_f = $self->command_stderr_filter ;
    $self->command_stderr_filter(
-       qr{//\S* - no file\(s\) at that changelist number\.\s*\n}
+       qr{//\S* - no file\(s\) at that changelist number\.\s*\r?\n}
    ) ;
 
    my %oldest_revs ;
@@ -389,7 +403,7 @@ sub scan_filelog {
    if ( @base_rev_specs ) {
       undef $log ;
       $self->command_stderr_filter(
-	  qr{//\S* - no file\(s\) at that changelist number\.\s*\n}
+	  qr{//\S* - no file\(s\) at that changelist number\.\s*\r?\n}
       ) ;
       $self->p4( [qw( filelog -m 1 -l ), @base_rev_specs ], \$log ) ;
       $self->command_stderr_filter( $temp_f ) ;
@@ -535,6 +549,8 @@ sub get_rev {
    sysopen( WP, $wp, O_CREAT | O_WRONLY )
       or die "$!: $wp" ;
 
+   binmode WP ;
+
    my $re = quotemeta( $rev_spec ) . " - .* change \\d+ \\((.+)\\)";
 
    ## TODO: look for "+x" in the (...) and pass an executable bit
@@ -584,23 +600,20 @@ sub copy_revs {
    }
 }
 
+=head1 SEE ALSO
 
-=head1 SUBCLASSING
-
-This class uses the fields pragma, so you'll need to use base and 
-possibly fields in any subclasses.
-
-=head1 COPYRIGHT
-
-Copyright 2000, Perforce Software, Inc.  All Rights Reserved.
-
-This module and the VCP package are licensed according to the terms given in
-the file LICENSE accompanying this distribution, a copy of which is included in
-L<vcp>.
+L<VCP::Dest::p4>, L<vcp>.
 
 =head1 AUTHOR
 
 Barrie Slaymaker <barries@slaysys.com>
+
+=head1 COPYRIGHT
+
+Copyright (c) 2000, 2001, 2002 Perforce Software, Inc.
+All rights reserved.
+
+See L<VCP::License|VCP::License> (C<vcp help license>) for the terms of use.
 
 =cut
 

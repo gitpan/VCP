@@ -188,7 +188,8 @@ sub _set_work_path {
 	 debug "vcp: $self unlinking '$doomed' in "
 	    . join( '|', @details[0,1,2,3]) ;
       }
-      unlink $doomed or warn "$! unlinking $doomed\n" ;
+      unlink $doomed or warn "$! unlinking $doomed\n"
+         unless $ENV{VCPNODELETE};
    }
 
    $self->{$field} = $fn ;
@@ -268,7 +269,8 @@ sub DESTROY {
    my $doomed = $self->work_path ;
    if ( defined $doomed && -e $doomed ) {
       debug "vcp: $self unlinking '$doomed'" if debugging $self ;
-      unlink $doomed or warn "$! unlinking $doomed\n" ;
+      unlink $doomed or warn "$! unlinking $doomed\n"
+         unless $ENV{VCPNODELETE};
    }
 }
 

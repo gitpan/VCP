@@ -90,6 +90,9 @@ sub new {
       open( $self->{OUT_FH}, ">$self->{OUT_NAME}" )
          or die "$!: $self->{OUT_NAME}" ;
    }
+   ## BUG: Can't undo this AFAIK, so we're permanently altering STDOUT
+   ## if OUT_NAME eq '-'.
+   binmode $self->{OUT_FH};
 
    my $doctype ;
    my @sort_spec ;
@@ -213,11 +216,16 @@ sub handle_rev {
       $w->setDataMode( 1 ) ;
    }
 
+   my $convert_crs = $^O =~ /Win32/ && $r->type eq "text" ;
+
    my $digestion ;
+   my $close_it ;
    my $cp = $r->work_path ;
    if ( $is_base_rev ) {
       sysopen( F, $cp, O_RDONLY ) or die "$!: $cp\n" ;
+      binmode F ;
       $digestion = 1 ;
+      $close_it = 1 ;
    }
    elsif ( $r->action eq 'delete' ) {
       $w->delete() ;
@@ -225,6 +233,10 @@ sub handle_rev {
    }
    else {
       sysopen( F, $cp, O_RDONLY ) or die "$!: $cp\n" ;
+      ## need to binmode it so ^Z can pass through, need to do \r and
+      ## \r\n -> \n conversion ourselves.
+      binmode F ;
+      $close_it = 1 ;
 
       my $buf ;
       my $read ;
@@ -256,12 +268,19 @@ sub handle_rev {
       ) {
          ## Full content, no delta.
 	 $w->start_content( encoding => $encoding ) ;
+	 my $delete_nl ;
 	 while () {
 	    ## Odd chunk size is because base64 is most concise with
 	    ## chunk sizes a multiple of 57 bytes long.
 	    $read = sysread( F, $buf, 57_000 ) ;
 	    die "$! reading $cp\n" unless defined $read ;
 	    last unless $read ;
+	    if ( $convert_crs ) {
+	       substr( $buf, 0, 1 ) = ""
+		  if $delete_nl && substr( $buf, 0, 1 ) eq "\n" ;
+               $delete_nl = substr( $buf, -1 ) eq "\n" ;
+	       $buf =~ s/(\r\n|\r)/\n/g ;  ## ouch, that's gotta hurt.
+	    }
 	    if ( $encoding eq "none" ) {
 	       _emit_characters( $w, \$buf ) ;
 	    }
@@ -290,35 +309,11 @@ sub handle_rev {
 
          ## TODO: Include entire contents if diff is larger than the contents.
 
-#	 ## Accumulate a bunch of output so that characters can make a
-#	 ## knowledgable CDATA vs &lt;&amp; escaping decision.
-#	 ## We use '-a' since we don't wan't NULs and other control chars to
-#	 ## make diff think it's binary.
-#	 $self->run(
-#	    [qw( diff -a -u ), $old_cp, $cp],
-#	       '|', sub {
-#		  $/ = "\n" ;
-#		  <STDIN> ; <STDIN> ;     ## Throw away first two lines
-#		  my @accum ;
-#		  while (<STDIN>) {
-#		     push @accum, $_ ;
-#		     if ( @accum > 1000 ) {
-#			print @accum ;
-#			@accum = () ;
-#		     }
-#		  }
-#		  print @accum ;
-#		  close STDOUT ;
-#		  kill 9, $$ ;  ## Avoid calling DESTROY()s
-#	       },
-#	       '>', sub {
-#		  _emit_characters( $w, \$_[0] ) ;
-#	       },
-#	 ) ;
 	 ## Accumulate a bunch of output so that characters can make a
 	 ## knowledgable CDATA vs &lt;&amp; escaping decision.
 	 my @output ;
 	 my $outlen = 0 ;
+	 my $delete_nl ;
 	 ## TODO: Write a "minimal" diff output handler that doesn't
 	 ## emit any lines from $old_cp, since they are redundant.
 	 diff $old_cp, $cp,
@@ -327,6 +322,10 @@ sub handle_rev {
                STYLE  => "VCP::DiffFormat",
 	       OUTPUT => sub {
 		  push @output, $_[0] ;
+		  ## Assume no lines split between \r and \n because
+		  ## diff() splits based on lines, so we can just
+		  ## do a simple conversion here.
+		  $output[-1] =~ s/\r\n|\r/\n/g if $convert_crs ;
 		  $outlen += length $_[0] ;
 		  return unless $outlen > 100_000 ;
 		  _emit_characters( $w, \join "", splice @output  ) ;
@@ -343,8 +342,27 @@ sub handle_rev {
       ## TODO: See if this should be seek or sysseek.
       sysseek F, 0, 0 or die "$!: $cp" ;
       my $d= Digest::MD5->new ;
+      ## gotta do this by hand, since it's in binmode and we want
+      ## to handle ^Z and lone \r's.
+      my $delete_nl ;
+      my $read ;
+      my $buf ;
+      while () {
+	 $read = sysread( F, $buf, 10_000 ) ;
+	 die "$! reading $cp\n" unless defined $read ;
+	 last unless $read ;
+	 if ( $convert_crs ) {
+	    substr( $buf, 0, 1 ) = ""
+	       if $delete_nl && substr( $buf, 0, 1 ) eq "\n" ;
+	    $delete_nl = substr( $buf, -1 ) eq "\n" ;
+	    $buf =~ s/(\r\n|\r)/\n/g ;  ## ouch, that's gotta hurt.
+	 }
+	 $d->add( $buf ) ;
+      }
       $d->addfile( \*F ) ;
       $w->digest( $d->b64digest, type => 'MD5', encoding => 'base64' ) ;
+   }
+   if ( $close_it ) {
       close F ;
    }
 
@@ -373,17 +391,16 @@ sub writer {
 
 =back
 
-=head1 COPYRIGHT
-
-Copyright 2000, Perforce Software, Inc.  All Rights Reserved.
-
-This module and the VCP package are licensed according to the terms given in
-the file LICENSE accompanying this distribution, a copy of which is included in
-L<vcp>.
-
 =head1 AUTHOR
 
 Barrie Slaymaker <barries@slaysys.com>
+
+=head1 COPYRIGHT
+
+Copyright (c) 2000, 2001, 2002 Perforce Software, Inc.
+All rights reserved.
+
+See L<VCP::License|VCP::License> (C<vcp help license>) for the terms of use.
 
 =cut
 

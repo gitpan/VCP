@@ -6,94 +6,119 @@ vcp - Copy versions of files between repositories and/or RevML
 
 =head1 SYNOPSIS
 
-   vcp [vcp_opts] src[:files] [src_opts] [dest:[<location>]] [dest_opts]
+   vcp [vcp_opts] <source> <dest>
 
-   vcp cvs:/mymodule/... -r 1.1: p4://depot/mymodule
-   vcp p4://depot/mainbranch/...@100-105 revml:
-   vcp help
-   vcp revml: --dtd <foo.dtd> --save_dtd
+   vcp help [topic]
 
-=head1 STATUS
-
-Alpha code.  Please report bugs to revml@perforce.com.
+   vcp html <destination dir>
 
 =head1 DESCRIPTION
 
-vcp ('version copy') copies versions and version ranges of files from
-one repository to another, translating as much as possible along the
-way.
+C<vcp> ('version copy') copies versions of files from one repository to another,
+translating as much metadata as possible along the way.  This allows you to
+copy and translate files and their histories between revision storage systems.
 
-This allows you to copy and translate ranges of revisions of files
-between different vendors' revision storage systems.
+Supported source and destination types are C<cvs:>, C<p4:>, and C<revml:>.
 
-Inputs and output classes currently available are:
-
-   Class    Source     Destination
-   cvs        x            x
-   p4         x            x
-   revml      x            x
+=head2 Copying Versions
 
 The general syntax of the vcp command line is:
 
-   vcp [vcp_opts] <source> [src_opts] <dest> [dest_opts]
+   vcp [<vcp options>] <source> <dest>
 
-where C<E<lt>sourceE<gt>> and C<E<lt>destE<gt>> are composed of fields
-separated by delimiters like so:
+The three portions of the command line are:
 
-   scheme:user(view):password@server:filespec
+=over
+
+=item C<E<lt>vcp optionsE<gt>>
+
+Command line options that control the operation of the C<vcp> command, like
+C<-d> for debugging or C<-h> for help.  There are very few global options,
+these are covered below. Note that they must come before the
+C<E<lt>sourceE<gt>> specification.
+
+=item C<E<lt>sourceE<gt>>
+
+Were to extract versions from, including any command line options needed to
+control what is extracted and how.  See the next section.
+
+=item C<E<lt>destE<gt>>
+
+Where to insert versions, including any command line options needed to control
+how files are stored.  See the next section.
+
+=back
+
+=head2 Specifying Repositories
+
+The C<E<lt>sourceE<gt>> and C<E<lt>destE<gt>> specifications are meant to
+resemble URIs.  They my have several fields delimited by C<:> and C<@>, and may
+have trailing command line options.  The full (rarely used) syntax is:
+
+   scheme:user(view):password@repository:filespec [<options>]
 
 where
 
-   scheme is a repository type ('p4', 'cvs', 'revml'), or special
-      command ('help', 'save_dtd').
+=over
 
-   user, view, and password are optional values, one or more of
-      which may be required for repository access.  CVS does not
-      use (view).  For p4, (view) is the client setting
-      (P4CLIENT or -c option).
+=item C<scheme:>
 
-   server is the repository spec, CVSROOT for CVS or P4PORT for p4.
+The repository type (C<p4:>, C<cvs:>, C<revml:>).
 
-   filespec is the file specification for the files to move.  As
-      much as possible, this spec is similar to the native filespecs
-      used by the repository indicated by the scheme.
+=item C<user>, C<view>, and C<password>
 
-Most C<E<lt>sourceE<gt>> and C<E<lt>destE<gt>> specs will omit one or more of
-the fields.  For instance, Filespecs or passwords are often omitted from the
-destination, in which case the leading colons for these fields are also
-optional. If no user, view, or password is supplied, the "@" is optional.
+Optional values for authenticating with the repository and identifying which
+view to use.  C<cvs> does not use C<view>.  For C<p4>, C<view> is the client
+setting (equibalent to setting C<P4CLIENT> or using C<p4>'s C<-c> option).
 
-That's a bit confusing, here are some examples of stripped-down specs:
+=item C<repository>
+
+The repository spec, CVSROOT for CVS or P4PORT for p4.
+
+=item C<filespec>
+
+Which versions of what files to move.  As much as possible, this spec is
+similar to the native filespecs used by the repository indicated by the scheme.
+
+=item C<E<lt>optionsE<gt>>
+
+Command line options that usually mimic the options provided by the underlying
+repositories' command line tools (C<cvs>, C<p4>, etc).
+
+=back
+
+Most of these fields are omitted in practice, only the C<scheme> field is
+required, though (in most cases) the C<repository> field is also needed unless
+you set the appropriate environment variables (C<CVSROOT>, C<P4PORT>, etc).
+
+The a bit confusing, here are some examples specs:
 
    cvs:server:/foo
    p4:user@server://depot/foo/...
    p4:user:password@public.perforce.com:1666://depot/foo/...
 
 Options and formats for of individual schemes can be found in the relevant
-manpages:
+help topics, for instance:
 
-L<VCP::Source::cvs>, L<VCP::Source::p4>, L<VCP::Source::revml>,
-L<VCP::Dest::cvs>, L<VCP::Dest::p4>, L<VCP::Dest::revml>.
+   vcp help source::cvs
 
-At some point, the help command will be extended to be able to display them.
+See C<vcp help> for a list of source and destination topics.
 
-=head2 OPTIONS
+=head2 C<vcp> Options
 
-All general options to vcp must precede the first scheme.  Scheme-specific
-options must come after the affected source or destination spec and before the
-next one.
+All general options to vcp must precede the C<E<lt>sourceE<gt>>.
+Scheme-specific options must be placed immediately after the
+C<E<lt>sourceE<gt>> or C<E<lt>destE<gt>> spec and before the next one.
 
 =over
 
 =item --debug <spec>, -d <spec>
 
-Enables display of debugging information.
-A debug spec is part or all of a module name like
-C<Source::revml> or a perl5 regular expression to match module
+Enables display of debugging information.  A debug spec is part or all of a
+module name like C<Source::revml> or a perl5 regular expression to match module
 names.  Debug specs are not case insensitively.
 
-The most general,
-show-me-everything debug option is:
+The most general, show-me-everything debug option is:
 
    -d ".*"
 
@@ -124,42 +149,55 @@ These are all equivalent to C<vcp help>.
 
 =back
 
-=head1 ARGUMENTS
+=head2 Getting help
 
-There are two special schemes, "help" and "save_dtd".
+(See also L<Generating HTML Documentation|Generating HTML Documentation>,
+below).
 
-=over
+There is a slightly different command line format for requesting help:
 
-=item help
+   vcp help [<topic>]
 
-Displays the full help text.  This will be extended to allow the retrieval of
-all of the manpages provided with VCP.
+where C<E<lt>topicE<gt>> is the optional name of a topic.  C<vcp help> without
+a C<E<lt>>topicC<E<gt>> prints out a list of topics, and C<vcp help vcp>
+emits this page.
 
-=item save_dtd [<how>]
+All help documents are also available as Unix C<man> pages and using the
+C<perldoc> command, although the names are slightly different:
 
-This is primarily for vcp maintainers.
+   with vcp               via perldoc        
+   ================       ===========
+   vcp help vcp           perldoc vcp
+   vcp help source::cvs   perldoc VCP::Source::cvs
+   vcp help source::cvs   perldoc VCP::Dest::p4
 
-Outputs the DTD to stdout if <how> is C<->, or to a file named like
-v1_000.pm if <how> looks like a version number, or in a module named
-after <how> if <how> contains '::'.  This file is placed in
-./lib/RevML/DTD or ./RevML/DTD or ./, whichever is found first.  No
-directories will be created.
+C<vcp help> is case insensitive, C<perldoc> and C<man> may or may not be
+depending on your filesystem.  The C<man> commands look just like the example
+C<perldoc> commands except for the command name.  Both have the advantage that
+they use your system's configured pager if possible.
 
-=back
-
-=head1 ENVIRONMENT
+=head2 Environment Variables
 
 The environment is often used to set context for the source and destination
 by way of variables like P4USER, P4CLIENT, CVSROOT, etc.
 
 There is also one environment variable that is used to enable
 command line debugging.  The VCPDEBUG variable acts just like a leading
-"-d=$VCPDEBUG" was present on the command line.
+C<-d=$VCPDEBUG> was present on the command line.
 
    VCPDEBUG=main,p4
 
-(see L</--debug, -d> for more info).  This is useful when VCP is embedded in
-another application, like a makefile or a test suite.
+(see L<"--debug E<lt>specE<gt>, -d E<lt>specE<gt>"> for more info).  This is useful when VCP is
+embedded in another application, like a makefile or a test suite.
+
+=head2 Generating HTML Documentation
+
+All of the help pages in C<vcp> can be built in to an HTML tree with the
+command:
+
+   vcp html <dest_dir>
+
+The index file will be C<E<lt>dest_dirE<gt>/index.html>.
 
 =cut
 
@@ -199,7 +237,9 @@ use XML::Doctype ;
 
    $arg = shift ;
 
-   help_and_exit() if $arg eq 'help' ;
+   build_html_tree_and_exit( $pname, @ARGV ) if $arg eq "html";
+
+   help_and_exit( $pname, @ARGV ) if $arg eq 'help' ;
 
    my @errors ;
 
@@ -209,19 +249,12 @@ use XML::Doctype ;
    ## anyway.  But, for consistency's sake, I do the same to both.
 
    my $source ;
-   if ( defined $arg ) {
-      my ( $scheme, $spec ) = $arg =~ /^(.*?)(?::(.*))?$/ ;
-      if ( defined $spec && ! length $spec
-         && @ARGV
-	 && ( $ARGV[0] eq '-' || substr( $ARGV[0], 0, 1 ) ne '-' )
-	 && index( $ARGV[0], ':' ) < 0
-      ) {
-         $spec = shift ;
-      }
+   if ( defined $arg && $arg =~ /^\w+:/ ) {
+      my ( $scheme, $spec ) = $arg =~ /^([^:]+):(.*)/ ;
 
-      $spec = defined $spec ? "$scheme:$spec" : $scheme ;
       eval {
-	 $source = load_module( "VCP::Source::$scheme", $spec, \@ARGV );
+         ## This next one consumes all options up to the dest scheme.
+	 $source = load_module( "VCP::Source::$scheme", $arg, \@ARGV );
 	 die "unknown source scheme '$scheme', try ",
 	    list_modules( "VCP::Source" ), "\n"
 	    unless defined $source ;
@@ -232,25 +265,12 @@ use XML::Doctype ;
 
    my $dest ;
    if ( defined $source ? $source->dest_expected : @ARGV ) {
-      my $scheme ;
-      my $spec = '' ;
-      if ( @ARGV ) {
-	 ( $scheme, $spec ) = shift =~ /^(.*?)(?::(.*))?$/ ;
-	 if ( defined $spec && ! length $spec
-	    && @ARGV
-	    && ( $ARGV[0] eq '-' || substr( $ARGV[0], 0, 1 ) ne '-' )
-	    && index( $ARGV[0], ':' ) < 0
-	 ) {
-	    $spec = shift ;
-	 }
-      }
-      else {
-	 $scheme = 'revml' ;
-      }
+      my ( $scheme, $spec ) = @ARGV
+         ? shift =~ /^([^:]+?):(.*)/
+         : ( "revml", "" );
 
-      $spec = defined $spec ? "$scheme:$spec" : $scheme ;
       eval {
-	 $dest = load_module("VCP::Dest::$scheme", $spec, \@ARGV );
+	 $dest = load_module("VCP::Dest::$scheme", "$scheme:$spec", \@ARGV );
 	 die "unknown destination scheme '$scheme', try ",
 	    list_modules( "VCP::Dest" ), "\n"
 	    unless defined $dest ;
@@ -317,7 +337,7 @@ sub list_modules {
    for ( @INC ) {
       my $dir = File::Spec->catdir( $_, $dirname ) ;
       opendir( D, $dir ) or next ;
-      my @files = grep $_ !~ /^\.\.?$/ && s/\.pm$//, readdir D ;
+      my @files = grep $_ !~ /^\.\.?$/ && s/\.pm$//i, readdir D ;
       closedir D ;
       $seen{$_} = 1 for @files ;
    }
@@ -339,9 +359,177 @@ sub options_and_exit {
    Pod::Usage::pod2usage( -verbose => 1, -exitval => 1 ) ;
 }
 
+
+sub find_help_modules {
+   my ( $desired_module ) = @_;
+
+   require File::Find;
+
+   my %modules;
+
+   for my $inc_dir ( @INC ) {
+      $inc_dir = File::Spec->rel2abs( $inc_dir );
+
+      my $vcp_file = File::Spec->catfile( $inc_dir, "VCP.pm" );
+      $modules{VCP} ||= $vcp_file if -f $vcp_file;
+
+      my $vcp_dir  = File::Spec->catdir(  $inc_dir, "VCP"    );
+      next unless -d $vcp_dir;
+
+      File::Find::find(
+         sub {
+            return if -d $_;
+            return unless /\.(pm|pod)\Z/i;
+
+            my $mod_name = File::Spec->abs2rel( $File::Find::name, $vcp_dir );
+
+            $mod_name =~ s{[:\\/]+}{::}g;
+            $mod_name =~ s{\.(pm|pod)}{}i;
+
+            if ( defined $desired_module && lc $mod_name eq $desired_module ) {
+               die "FOUND $File::Find::name\n";
+            }
+            else {
+               $modules{$mod_name} ||= $File::Find::name;
+            }
+
+         },
+         $vcp_dir
+      )
+   }
+
+   return %modules;
+}
+
+
 sub help_and_exit {
    require Pod::Usage ;
-   Pod::Usage::pod2usage( -verbose => 2, -exitval => 0 ) ;
+
+   my ( $prog_name, $topic ) = @_;
+
+   my $result = 0;
+
+   if ( defined $topic ) {
+      $topic = lc $topic;
+
+      if ( $topic eq "vcp" ) {
+          system( "pod2text", $0 );
+          exit $result;
+      }
+
+      eval {
+         find_help_modules( $topic );
+      };
+      if ( $@ =~ /FOUND (.*)/ ) {
+         exit system( "pod2text", $1 ) >> 8;
+      }
+      elsif ( $@ ) {
+          die $@;
+      }
+
+      $result = 1;
+      warn "Unrecognized help topic '$topic'\n";
+   }
+
+    print <<END_HELP_TOPICS;
+
+$prog_name - Version Copy, a tool for copying versions file repositories
+
+help topics (use "vcp help <topic>" to see):
+
+   vcp            General help for the vcp command
+
+   source::p4     Extracting from a p4 repository
+   dest::p4       Inserting in to a p4 repository
+   source::cvs    Extracting from a cvs repository
+   dest::cvs      Inserting in to a cvs repository
+
+   newlines       Newline, ^Z and NULL issues
+   process        How $prog_name works
+
+   license        Copyright and license information
+   maintenance    VCP Code maintenance, debugging tips & tricks
+
+END_HELP_TOPICS
+   exit $result;
+}
+
+
+sub build_html_tree_and_exit {
+   my ( $prog_name, $dest_dir ) = @_;
+
+   unless ( defined $dest_dir && length $dest_dir ) {
+       $dest_dir = $prog_name . "_html";
+   }
+
+   $dest_dir = File::Spec->rel2abs( $dest_dir );
+
+   $| = 1;
+   print "Generating HTML in $dest_dir/";
+
+   my %modules = find_help_modules;
+
+   require Pod::Links;
+   require Pod::HTML_Elements;
+   require File::Path;
+   require IO::File;
+
+   ## BEGIN CODE ADAPTED FROM NICK ING-SIMMONS' PodToHTML package
+   my $links = Pod::Links->new();
+   for my $fn (
+      $0,
+      grep /Source[^.]|Dest[^.]|\.pod/, values %modules
+   ) {
+      print ".";
+      $links->parse_from_file($fn);
+   }
+
+   for my $name ($links->names) {
+      $links->link(
+         $name,
+         do {
+            my $outfile = $name;
+            $outfile =~ s#::#/#g;
+            $outfile =~ s#[^/a-z0-9A-Z._-]#_#g;
+            $outfile .= ".html";
+            File::Spec->catfile( $dest_dir, $outfile );
+         }
+      ) if $links->pod($name);
+   }
+
+   my $index_file = File::Spec->catfile( $dest_dir, "index.html" );
+
+   my $parser = Pod::HTML_Elements->new(
+      Index => $index_file,
+      Links => $links,
+   );
+
+   ## the sort {} makes sure "vcp" is listed first in the
+   ## resulting index.
+   for my $name (
+      sort {
+         $a eq "vcp"
+            ? -1
+            : $b eq "vcp"
+               ? 1
+               : $a cmp $b
+      } $links->names
+   ) {
+      print ".";
+      my $file = $links->pod($name);
+      my $outfile = $links->link($name);
+      if (defined $file) {
+         File::Path::mkpath( File::Basename::dirname( $outfile ), 0, 0755 );
+         $parser->parse_from_file($file,$outfile);
+      }
+   }
+   $parser->write_index;
+   ## END CODE ADAPTED FROM NICK ING-SIMMONS' PodToHTML package
+   print "\n";
+
+   print "Finished, index file is $index_file\n";
+
+   exit( 0 );
 }
 
 
@@ -349,7 +537,7 @@ sub versions_and_exit {
    require File::Find ;
 
    my $require_module = sub {
-      return unless m/\.pm$/ ;
+      return unless m/\.pm$/i ;
       ## Avoid "name used only once" warning
       my $fn = $File::Find::name ;
       $fn = $File::Find::name ;
@@ -431,51 +619,22 @@ sub versions_and_exit {
    exit ;
 }
 
+=head1 SEE ALSO
+
+L<VCP::Process>, L<VCP::Newlines>, L<VCP::Source::p4>, L<VCP::Dest::p4>,
+L<VCP::Source::cvs>, L<VCP::Dest::cvs>, L<VCP::Source::revml>,
+L<VCP::Dest::revml>, L<VCP::Newlines>.  All are also available using C<vcp
+help>.
+
 =head1 AUTHOR
 
 Barrie Slaymaker <barries@slaysys.com>
 
 =head1 COPYRIGHT
 
-This program is licensed under the provisions of the BSD license:
+Copyright (c) 2000, 2001, 2002 Perforce Software, Inc.
+All rights reserved.
 
-      Copyright (c) 2000, 2001, Perforce Software, Inc.
-      All rights reserved.
-
-      Redistribution and use in source and binary forms, with or without
-      modification, are permitted provided that the following conditions are
-      met:
-
-	   - Redistributions of source code must retain the above copyright
-	     notice, this list of conditions and the following disclaimer. 
-	   - Redistributions in binary form must reproduce the above copyright
-	     notice, this list of conditions and the following disclaimer in
-	     the documentation and/or other materials provided with the
-	     distribution. 
-	   - Neither the name of the Perforce Software, Inc.nor the names of
-	     its contributors may be used to endorse or promote products
-	     derived from this software without specific prior written
-	     permission. 
-
-      THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS
-      AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
-      WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
-      WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
-      PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL
-      THE REGENTS OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT,
-      INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-      CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-      PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF
-      USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
-      HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
-      WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-      NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
-      USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY
-      OF SUCH DAMAGE.
-
-This notice is also included in the LICENSE file accompanying this
-distribution, which also must be retained in redistributions.
+See L<VCP::License|VCP::License> (C<vcp help license>) for the terms of use.
 
 =cut
-
-

@@ -8,6 +8,7 @@ README
 TODO
 beatonit
 bin/gentrevml
+bin/hexdump.pl
 bin/vcp
 lib/RevML/Doctype.pm
 lib/RevML/Doctype/v0_26.pm
@@ -21,8 +22,12 @@ lib/VCP/Dest/cvs.pm
 lib/VCP/Dest/p4.pm
 lib/VCP/Dest/revml.pm
 lib/VCP/DiffFormat.pm
+lib/VCP/License.pod
+lib/VCP/Maintenance.pod
+lib/VCP/Newlines.pod
 lib/VCP/Patch.pm
 lib/VCP/Plugin.pm
+lib/VCP/Process.pod
 lib/VCP/Rev.pm
 lib/VCP/Revs.pm
 lib/VCP/Source.pm

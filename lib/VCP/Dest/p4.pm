@@ -360,22 +360,16 @@ sub DESTROY {
 
 =back
 
-=head1 SUBCLASSING
-
-This class uses the fields pragma, so you'll need to use base and 
-possibly fields in any subclasses.
-
-=head1 COPYRIGHT
-
-Copyright 2000, Perforce Software, Inc.  All Rights Reserved.
-
-This module and the VCP package are licensed according to the terms given in
-the file LICENSE accompanying this distribution, a copy of which is included in
-L<vcp>.
-
 =head1 AUTHOR
 
 Barrie Slaymaker <barries@slaysys.com>
+
+=head1 COPYRIGHT
+
+Copyright (c) 2000, 2001, 2002 Perforce Software, Inc.
+All rights reserved.
+
+See L<VCP::License|VCP::License> (C<vcp help license>) for the terms of use.
 
 =cut
 

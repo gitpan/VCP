@@ -255,7 +255,6 @@ sub {
    } ;
    ok $@ || '', '', 'diff' ;
 },
-
 ##
 ## Incremental cvs->p4->revml update
 ##
@@ -309,7 +308,7 @@ sub {
    my $infile  = $t . "test-cvs-in-1-bootstrap.revml" ;
    eval {
       my $out ;
-      run [ @vcp, $cvs_spec, qw( -r ch_4: --bootstrap=** ), @revml_out_spec ],
+      run [ @vcp, $cvs_spec, qw( -r ch_4: --bootstrap=... ), @revml_out_spec ],
          \undef, \$out
          or die "`vcp $cvs_spec -r ch_4:` returned $?" ;
 
@@ -400,5 +399,5 @@ plan tests => scalar( @tests ) ;
 
 my $why_skip ;
 
-$why_skip .= "cvs command not found\n" unless `cvs -v` =~ /Concurrent Versions System/ ;
+$why_skip .= cvs_borken ;
 $why_skip ? skip( $why_skip, 0 ) : $_->() for @tests ;

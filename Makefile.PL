@@ -5,7 +5,7 @@ use vars qw( $VERSION ) ;
 
 require 5.00503 ;
 
-$VERSION = 0.26 ;
+$VERSION = 0.28 ;
 
 my @programs = qw( vcp ) ;
 
@@ -52,12 +52,13 @@ WriteMakefile(
     'PREREQ_PM'     => {
 	'Digest::MD5'      => 0,
 	'File::Temp'       => 0,
-        'IPC::Run'         => 0.6,
+        'IPC::Run'         => $^O =~ /Win32/ ? 0.7 : 0.6,
 	'MIME::Base64'     => 0,
-	'Regexp::Shellish' => 0,
+	'Regexp::Shellish' => 0.93,
 	'Text::Diff'       => 0,
         'XML::ValidWriter' => 0.36,
 	'XML::Parser'      => 0,
+        'Pod::Links'       => 0,  # In PodToHtml-xxx.tar.gz
     },
     'LIBS'          => [''],   # e.g., '-lm' 
     'DEFINE'        => '',     # e.g., '-DHAVE_SOMETHING' 

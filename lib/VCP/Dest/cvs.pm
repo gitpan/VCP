@@ -16,9 +16,8 @@ a temporary directory and use it to add, delete, and alter files.
 
 =head1 DESCRIPTION
 
-=head1 METHODS
-
-=over
+This driver allows L<vcp|vcp> to insert revisions in to a CVS
+repository.  There are no options at this time.
 
 =cut
 
@@ -62,12 +61,12 @@ use fields (
 ## lots of commits.  Note that we commit before each delete to make sure
 ## that the order of adds/edits and deletes is maintained.
 
-=item new
-
-Creates a new instance of a VCP::Dest::cvs.  Contacts the cvsd using the cvs
-command and gets some initial information ('cvs info' and 'cvs labels').
-
-=cut
+#=item new
+#
+#Creates a new instance of a VCP::Dest::cvs.  Contacts the cvsd using the cvs
+#command and gets some initial information ('cvs info' and 'cvs labels').
+#
+#=cut
 
 sub new {
    my $class = shift ;
@@ -143,8 +142,15 @@ sub checkout_file {
    ## Apparently the way to do this is to print it to stdout on update
    ## (or checkout, but we used update so it works with a $fn relative
    ## to the cwd, ie a $fn with no module name first).
+## The -kb is a hack to get the tests to pass on Win32, where \n
+## becomes \r\n on checkout otherwise.  TODO: figure out what is
+## the best thing to do.  We might try it without the -kb, then
+## if the digest check fails, try it again with -kb.  Problem is
+## that said digest check occurs in VCP/Source/revml, not here,
+## so we need to add a "can retry" return result to the API and
+## modify the Sources to use it if a digest check fails.
    $self->cvs(
-      [ qw( update -d -p ), -r => $tag, $fn ],
+      [ qw( update -d -kb -p ), -r => $tag, $fn ],
       '>', $work_path
    ) ;
    die "'$work_path' not created by cvs checkout" unless -e $work_path ;
@@ -199,7 +205,7 @@ sub handle_rev {
 
    ## Don't save the reference.  This forces the DESTROY to happen here,
    ## if possible.  TODO: Keep VCP::Rev from deleting files prematurely.
-   my $saw = !!$self->seen( $r ) ;
+   my $saw = ! ! $self->seen( $r ) ;
 
    return if $r->is_base_rev ;
 
@@ -353,22 +359,16 @@ sub tag {
 }
 
 
-=head1 SUBCLASSING
-
-This class uses the fields pragma, so you'll need to use base and 
-possibly fields in any subclasses.
-
-=head1 COPYRIGHT
-
-Copyright 2000, Perforce Software, Inc.  All Rights Reserved.
-
-This module and the VCP package are licensed according to the terms given in
-the file LICENSE accompanying this distribution, a copy of which is included in
-L<vcp>.
-
 =head1 AUTHOR
 
 Barrie Slaymaker <barries@slaysys.com>
+
+=head1 COPYRIGHT
+
+Copyright (c) 2000, 2001, 2002 Perforce Software, Inc.
+All rights reserved.
+
+See L<VCP::License|VCP::License> (C<vcp help license>) for the terms of use.
 
 =cut
 

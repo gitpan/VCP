@@ -1,9 +1,12 @@
 \.bak$
 \.sw[a-z]$
 \.tar\.gz$
+\.x~~$
 ^tmp/
 t/test-[^/]+\.revml
+^foo
 ^blib/
+^vcp_html/
 ^Makefile$
 ^Makefile\.[a-z]+$
 ^pm_to_blib$

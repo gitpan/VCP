@@ -1,5 +1,58 @@
 CHANGES for vcp - Version CoPy
 
+   - VCP::Source::cvs allows the "-kb" (or "-k b") option now so that you
+     can check out binary files.  May want to add a pattern for this.
+   - VCP::Source::cvs is now Win32 linends aware when parsing cvs' stdout
+   - VCP::Source::cvs --rev-root now requires a string parameter,
+     patch by Thomas Quinot <quinot@inf.enst.fr>.
+   - avoid ^Z in testing text files on Win32
+   - Really require Regexp::Shellish 0.93
+   - Require IPC::Run 0.7 on Win32 for massive performance boost
+   - Hack in "-kb" on VCP::Dest::cvs backfill checkouts to preserve \n-only
+     line-ends on Win32.  This probably needs to be generalized so that it can
+     detect whether \n or \r\n is in the original file; the problem is that
+     line-endedness is throwing off the digest check in VCP::Source::revml,
+     since gentrevml creates all the files with \n.  Because this is a testing
+     issue so far, I want to wait until a Win32 user can help me figure out
+     what the right thing to do here is.  I may just have Source::* try the
+     backfill again with a "flip linends flag" if it fails the first time.  -
+   - The test suite and VCP are now more enlightening when VCPNODELETE is set
+     (this convinces them to keep all working dirs around to post-mortem
+     failures).
+
+0.27 (unreleased)
+   - Win32 fixes to
+     - gentrevml
+     - VCP::TestUtils (these break the Unix test suite in a really minor way;
+       the t/90p4.t and t/90cvs.t test scripts exit with a non-zero result
+       code; need to fix that)
+     - VCP::*::cvs, VCP::*::p4.
+   - added "vcp html" to allow html documentation to be built.
+   - Rewrote 'vcp help' so it has a p4-like index and can get at all of the
+     module documentation (though internal-only stuff is not listed in the
+     index, it can be reached).
+   - VCP::Source::cvs: ignore waiting for and obtained lock messages.
+     Suggested by Thomas Quinot <quinot@inf.enst.fr>
+   - Added the VCPNODELETE option
+   - VCP::Patch now closes it's patch file (this matters on Win32).
+   - Added hexdump.pl, quite useful for looking in to problems involving
+     lineends, embedded ^Z, and embedded NULL (\000) chars.
+   - Added lib/VCP/License.pod
+   - Added lib/VCP/Maintenance.pod
+   - Added lib/VCP/Newlines.pod
+   - Added lib/VCP/Process.pod
+   - Rewrote vcp's POD
+   - cleaned up various other POD
+   - Simplified the <source> and <dest> parsing; we no longer allow a ' ' after
+     the ':' in the scheme:foo syntax.
+   - vcp will no longer die if it can't delete a working file.
+   - VCP::Plugin now has an extra call to cwd() to get p4 to act right; this
+     needs to be cleaned up a bit by directly setting the environment (I think)
+   - the test suite now skips all cvs-related tests if it can't find cvs.
+   - Require Regexp::Shellish 0.93 so that --bootstrap can accept the "..."
+     wildcard and be consistent with other wildcards.
+   - Updated copyrights in many POD files.
+
 0.26 Tue Dec 18 05:21:09 EST 2001
    - switched to use Text::Diff, no more Unix diff dependency.
      Added VCP::DiffFormat.

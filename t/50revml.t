@@ -25,8 +25,8 @@ my @perl = ( $^X, map {
 ## We always run vcp by doing a @perl, vcp, to make sure that vcp runs under
 ## the same version of perl that we are running under.
 my $vcp = 'vcp' ;
-$vcp = "bin/$vcp"    if -x "bin/$vcp" ;
-$vcp = "../bin/$vcp" if -x "../bin/$vcp" ;
+$vcp = "bin/$vcp"    if -e "bin/$vcp" ;
+$vcp = "../bin/$vcp" if -e "../bin/$vcp" ;
 
 $vcp = File::Spec->rel2abs( $vcp ) ;
 
@@ -71,7 +71,7 @@ sub {
 
 plan tests => scalar( @tests ) ;
 
-unless ( -x $vcp ) {
+unless ( -e $vcp ) {
    print STDERR "# '$vcp' not found\n" ;
    skip( 1, '' ) for @tests ;
    exit ;

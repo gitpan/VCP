@@ -67,7 +67,7 @@ sub p4 {
 
    my $args = shift ;
 
-   $self->run_safely( [ "p4", @$args ], @_ ) ;
+   $self->run_safely( [ $^O !~ /Win32/ ? "p4" : "p4.exe", @$args ], @_ ) ;
    $ENV{PWD} = $tmp if defined $tmp ;
 }
 
@@ -168,8 +168,11 @@ sub init_p4_view {
    $p4_spec =~ s{(/(\.\.\.)?)?$}{/...} ;
    my $work_dir = $self->work_root ;
 
-   $client_spec =~ s(^Root.*)(Root:\t$work_dir)m ;
-   $client_spec =~ s(^View.*)(View:\n\t$p4_spec\t//$client/...\n)ms ;
+   $client_spec =~ s{^Root.*}{Root:\t$work_dir}m ;
+   $client_spec =~ s{^View.*}{View:\n\t$p4_spec\t//$client/...\n}ms ;
+   $client_spec =~ s{^(Options:.*)}{$1 nocrlf}m 
+      if $^O =~ /Win32/ ;
+   $client_spec =~ s{^LineEnd.*}{LineEnd:\tunix}mi ;
 
    debug "p4: using client spec", $client_spec if debugging $self ;
 
@@ -237,7 +240,7 @@ END {
          my $out ;
          $object->p4( [ "client", "-d", $object->repo_client ], ">", \$out ) ;
 	 die "vcp: unexpected stdout from p4:\np4: ", $out
-	    unless $out =~ /^Client\s.*\sdeleted.$/ ;
+	    unless $out =~ /^Client\s.*\sdeleted./ ;
       }
       $object->repo_client( $tmp_name ) ;
       $_ = undef ;

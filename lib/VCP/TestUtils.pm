@@ -19,6 +19,7 @@ use Exporter ;
    p4d_borken 
    launch_p4d
 
+   cvs_borken
    cvs_options
    init_cvs
 
@@ -34,8 +35,9 @@ use Carp ;
 use Cwd ;
 use File::Path ;
 use File::Spec ;
-use IPC::Run qw( run ) ;
+use IPC::Run qw( run start kill_kill ) ;
 use POSIX ':sys_wait_h' ;
+use Text::Diff ;
 
 =head1 General utility functions
 
@@ -50,7 +52,7 @@ in an END block
 
 {
    my @tmp_dirs ;
-   END { rmtree \@tmp_dirs }
+   END { rmtree \@tmp_dirs unless $ENV{VCPNODELETE} }
 
    sub mk_tmp_dir {
       confess "undef!!!" if grep !defined, @_ ;
@@ -74,16 +76,8 @@ Requires a diff that knows about the -d and -U options.
 sub assert_eq {
    my ( $name, $in, $out ) = @_ ;
 
-   if ( $in ne $out ) {
-      open F, ">$name.in"  ; print F $in  ; close F ;
-      open F, ">$name.out" ; print F $out ; close F ;
-      my @cmd = ( 'diff', '-U', '10', "$name.in", "$name.out" ) ;
-      my $diff ;
-      if ( run( \@cmd, \undef, \$diff ) && $? != 256 ) {
-	 $diff = "`" . join( " ", @cmd ) . "` returned $?" ;
-      }
-      die $diff ;
-   }
+   ## Doint this because Test::Differences isn't quite "real" yet...
+   die diff \$in, \$out, { CONTEXT => 10 } if $in ne $out ;
 }
 
 =item slurp
@@ -95,6 +89,7 @@ sub assert_eq {
 sub slurp {
    my ( $fn ) = @_ ;
    open F, "<$fn" or die "$!: $fn" ;
+   binmode F ;
    local $/ ;
    return <F> ;
 }
@@ -149,8 +144,8 @@ sub vcp_cmd {
       ## We always run vcp by doing a @perl, vcp, to make sure that vcp runs under
       ## the same version of perl that we are running under.
       my $vcp = 'vcp' ;
-      $vcp = "bin/$vcp"    if -x "bin/$vcp" ;
-      $vcp = "../bin/$vcp" if -x "../bin/$vcp" ;
+      $vcp = "bin/$vcp"    if -e "bin/$vcp" ;
+      $vcp = "../bin/$vcp" if -e "../bin/$vcp" ;
 
       $vcp = File::Spec->rel2abs( $vcp ) ;
 
@@ -296,6 +291,84 @@ the repository.
 
 =cut
 
+#sub launch_p4d {
+#   my $prefix = shift || "" ;
+#
+#   {
+#      my $borken = p4d_borken ;
+#      croak $borken if $borken ;
+#   }
+#
+#   my $tmp  = File::Spec->tmpdir ;
+#   my $repo = File::Spec->catdir( $tmp, "vcp${$}_${prefix}p4repo" ) ;
+#   mk_tmp_dir $repo ;
+#
+#   ## Ok, this is wierd: we need to fork & run p4d in foreground mode so that
+#   ## we can capture it's PID and kill it later.  There doesn't seem to be
+#   ## the equivalent of a 'p4d.pid' file. If we let it daemonize, then I
+#   ## don't know how to get it's PID.
+#
+#   my $port ;
+#   my $p4d_pid ;
+#   my $tries ;
+#   while () {
+#      ## 30_000 is because I vaguely recall some TCP stack that had problems
+#      ## with listening on really high ports.  2048 is because I vaguely recall
+#      ## that some OS required root privs up to 2047 instead of 1023.
+#      $port = ( rand( 65536 ) % 30_000 ) + 2048 ;
+#      my @p4d = ( 'p4d', '-f', '-r', $repo, '-p', $port ) ;
+#      print "# Running ", join( " ", @p4d ), "\n" ;
+#      $p4d_pid = fork ;
+#      unless ( $p4d_pid ) {
+#	 ## Ok, there's a tiny chance that this will fail due to a port
+#	 ## collision.  Oh, well.
+#	 exec @p4d ;
+#	 die "$!: p4d" ;
+#      }
+#      sleep 1 ;
+#      ## Wait for p4d to start.  'twould be better to wait for P4PORT to
+#      ## be seen.
+#      select( undef, undef, undef, 0.250 ) ;
+#
+#      last if kill 0, $p4d_pid ;
+#      die "p4d failed to start after $tries tries, aborting\n"
+#         if ++$tries >= 3 ;
+#      warn "p4d failed to start, retrying\n" ;
+#   }
+#
+#   END {
+#      return unless defined $p4d_pid ;
+#      kill 'INT',  $p4d_pid or die "$! $p4d_pid" ;
+#      my $t0 = time ;
+#      my $dead_child ;
+#      while ( $t0 + 15 > time ) {
+#         select undef, undef, undef, 0.250 ;
+#	 $dead_child = waitpid $p4d_pid, WNOHANG ;
+#	 warn "$!: $p4d_pid" if $dead_child == -1 ;
+#	 last if $dead_child ;
+#      }
+#      unless ( defined $dead_child && $dead_child > 0 ) {
+#	 print "terminating $p4d_pid\n" ;
+#	 kill 'TERM', $p4d_pid or die "$! $p4d_pid" ;
+#	 $t0 = time ;
+#	 while ( $t0 + 15 > time ) {
+#	    select undef, undef, undef, 0.250 ;
+#	    $dead_child = waitpid $p4d_pid, WNOHANG ;
+#	    warn "$!: $p4d_pid" if $dead_child == -1 ;
+#	    last if $dead_child ;
+#	 }
+#      }
+#      unless ( defined $dead_child && $dead_child > 0 ) {
+#	 print "killing $p4d_pid\n" ;
+#	 kill 'KILL', $p4d_pid or die "$! $p4d_pid" ;
+#      }
+#   }
+#
+#   return {
+#      user =>    "${prefix}t_user",
+#      port =>    $port,
+#   } ;
+#}
 sub launch_p4d {
    my $prefix = shift || "" ;
 
@@ -314,59 +387,37 @@ sub launch_p4d {
    ## don't know how to get it's PID.
 
    my $port ;
-   my $p4d_pid ;
    my $tries ;
+   my $h ;
    while () {
       ## 30_000 is because I vaguely recall some TCP stack that had problems
       ## with listening on really high ports.  2048 is because I vaguely recall
       ## that some OS required root privs up to 2047 instead of 1023.
       $port = ( rand( 65536 ) % 30_000 ) + 2048 ;
-      my @p4d = ( 'p4d', '-f', '-r', $repo, '-p', $port ) ;
+      my @p4d = (
+	 $^O !~ /Win32/ ? "p4d" : "p4d.exe",
+	 "-f", "-r", $repo, "-p", $port
+      ) ;
       print "# Running ", join( " ", @p4d ), "\n" ;
-      $p4d_pid = fork ;
-      unless ( $p4d_pid ) {
-	 ## Ok, there's a tiny chance that this will fail due to a port
-	 ## collision.  Oh, well.
-	 exec @p4d ;
-	 die "$!: p4d" ;
-      }
-      sleep 1 ;
+      $h = start \@p4d ;
       ## Wait for p4d to start.  'twould be better to wait for P4PORT to
       ## be seen.
-      select( undef, undef, undef, 0.250 ) ;
+      sleep 1 ;
 
-      last if kill 0, $p4d_pid ;
+      ## The child process will have died if the port is taken or due
+      ## to other errors.
+      last if $h->pumpable;
+      finish $h;
       die "p4d failed to start after $tries tries, aborting\n"
          if ++$tries >= 3 ;
       warn "p4d failed to start, retrying\n" ;
    }
 
    END {
-      return unless defined $p4d_pid ;
-      kill 'INT',  $p4d_pid or die "$! $p4d_pid" ;
-      my $t0 = time ;
-      my $dead_child ;
-      while ( $t0 + 15 > time ) {
-         select undef, undef, undef, 0.250 ;
-	 $dead_child = waitpid $p4d_pid, WNOHANG ;
-	 warn "$!: $p4d_pid" if $dead_child == -1 ;
-	 last if $dead_child ;
-      }
-      unless ( defined $dead_child && $dead_child > 0 ) {
-	 print "terminating $p4d_pid\n" ;
-	 kill 'TERM', $p4d_pid or die "$! $p4d_pid" ;
-	 $t0 = time ;
-	 while ( $t0 + 15 > time ) {
-	    select undef, undef, undef, 0.250 ;
-	    $dead_child = waitpid $p4d_pid, WNOHANG ;
-	    warn "$!: $p4d_pid" if $dead_child == -1 ;
-	    last if $dead_child ;
-	 }
-      }
-      unless ( defined $dead_child && $dead_child > 0 ) {
-	 print "killing $p4d_pid\n" ;
-	 kill 'KILL', $p4d_pid or die "$! $p4d_pid" ;
-      }
+      return unless $h;
+      $h->kill_kill;
+      $? = 0;  ## p4d exits with a "15", which becomes our exit code
+               ## if we don't clear this.
    }
 
    return {
@@ -380,6 +431,21 @@ sub launch_p4d {
 =head1 CVS mgmt functions
 
 =over
+
+=item cvs_borken
+
+Returns true if the cvs is missing or too old (< 99.2).
+
+=cut
+
+sub cvs_borken {
+   my $cvsV = `cvs -v` || 0 ;
+   return "cvs command not found" unless $cvsV ;
+   return "cvs command does not appear to be for CVS: '$cvsV'"
+       unless $cvsV =~ /Concurrent Versions System/;
+
+   return "" ;
+}
 
 =item init_cvs
 
@@ -420,7 +486,7 @@ sub init_cvs {
    ## However, if they've used "su", a very common occurence, then getlogin()
    ## will return failure (NULL in C, undef in Perl) and we can spoof CVS
    ## using $ENV{LOGNAME}.
-   if ( ! $>  ) {
+   if ( ! $>  && $^O !~ /Win32/ ) {
       my $login = getlogin ;
       if ( ( ! defined $login || ! getpwnam $login )
          && ( ! exists $ENV{LOGNAME} || ! getpwnam $ENV{LOGNAME} )
