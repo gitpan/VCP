@@ -142,12 +142,14 @@ my @changes ;
 
 	 print STDERR "   $name#$rev_num{$name}:" if $debug ;
 
+	 die "counter too big" if $counter > 254 ;
+
 	 my $content = sprintf(
 	    qq{%s, revision %d, char 0x%02x="%s"\n},
 	    $name,
 	    $rev_num{$name},
-	    $counter,
-	    chr( $counter ),
+	    $counter + 1,
+	    chr( $counter + 1 ),
 	 ) ;
 
 	 my $r = {

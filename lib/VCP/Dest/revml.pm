@@ -207,22 +207,41 @@ sub handle_rev {
    my $digestion ;
    my $cp = $r->work_path ;
    if ( $is_base_rev ) {
-      sysopen( F, $cp, O_RDONLY ) or die "$!: $cp" ;
+      sysopen( F, $cp, O_RDONLY ) or die "$!: $cp\n" ;
       $digestion = 1 ;
    }
    elsif ( $r->action eq 'delete' ) {
       $w->delete() ;
    }
    else {
-      sysopen( F, $cp, O_RDONLY ) or die "$!: $cp" ;
-      my $buf ;
-      my $read = sysread( F, $buf, 100000 ) ;
-      $buf = '' unless $read ;
-      my $bin_char_count = $buf =~ tr/\x00-\x08\x0b-\x1f\x7f-\xff// ;
-      my $encoding =
-	 $bin_char_count * 20 > length( $buf ) * 76/57 ? "base64" : "none" ;
+      sysopen( F, $cp, O_RDONLY ) or die "$!: $cp\n" ;
 
-      if ( ! $saw || ! defined $saw->work_path || $encoding ne "none" ) {
+      my $buf ;
+      my $read ;
+      my $has_nul ;
+      do {
+	 $read = sysread( F, $buf, 100_000 ) ;
+	 die "$! reading $cp\n" unless defined $read ;
+	 $has_nul = $buf =~ tr/\x00//
+	    if $read ;
+      } while $read && ! $has_nul ;
+
+      sysseek( F, 0, 0 ) or die "$! seeking on $cp\n" ;
+      
+      $read = sysread( F, $buf, 100_000 ) ;
+      die "$! reading $cp\n" unless defined $read ;
+      $buf = '' unless $read ;
+      my $bin_char_count = $buf =~ tr/\x01-\x08\x0b-\x1f\x7f-\xff// ;
+      my $encoding = $bin_char_count * 20 > length( $buf ) * 76/57
+	 ? "base64"
+	 : "none" ;
+
+      if (  ! $saw
+         || ! defined $saw->work_path
+	 || $has_nul
+	 || $encoding ne "none"
+      ) {
+         ## Full content, no delta.
 	 $w->start_content( encoding => $encoding ) ;
 	 while () {
 	    last unless $read ;
@@ -232,12 +251,14 @@ sub handle_rev {
 	    else {
 	       $w->characters( encode_base64( $buf ) ) ;
 	    }
-	    $read = sysread( F, $buf, 100000 ) ;
+	    $read = sysread( F, $buf, 100_000 ) ;
+	    die "$! reading $cp\n" unless defined $read ;
 	 }
 	 $w->end_content ;
 	 $w->setDataMode( 1 ) ;
       }
       else {
+         ## Delta from previous version
 	 $w->base_name(   $saw->name )
 	    if $saw->name ne $r->name ;
 	 $w->base_rev_id( $saw->rev_id ) ;

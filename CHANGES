@@ -1,5 +1,11 @@
 CHANGES for vcp - Version CoPy
 
+0.064 Tue May  8 11:26:11 EDT 2001
+   - Some versions of patch have problems handling embedded NUL (\0x00)
+     characters. Fixed gentrevml and VCP::Dest::revml to not generate
+     deltas for files containing them. If a file contains a NUL, it will
+     sent in it's entirety, though it might or might not be base64 encoded.
+
 0.063 Tue Apr 24 23:57:28 EDT 2001
    - Fixed bug in parsing of repo specs (scheme:user:passwd@server:files)
 
