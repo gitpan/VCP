@@ -1,5 +1,13 @@
 VCP Installation Instructions
 
+Before installing VCP, you must install the XML Parsing library "Expat",
+available at:
+
+   http://sourceforge.net/projects/expat/
+
+Installing that allows XML::Parser to install, which allows
+XML::ValidWriter to install, which allows VCP to install.
+
 VCP is all Perl code, and uses a number of other Perl modules.  Installing
 these is a bit of a pain, but CPAN will do it for you automatically.  To
 install VCP using CPAN, do

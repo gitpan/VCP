@@ -37,7 +37,7 @@ use fields (
 =cut
 
 sub new {
-   my $class = shift ;
+   my $class = CORE::shift ;
    $class = ref $class || $class ;
 
    my $self ;
@@ -64,7 +64,7 @@ Adds a revision or revisions to the collection.
 =cut
 
 sub add {
-   my VCP::Revs $self = shift ;
+   my VCP::Revs $self = CORE::shift ;
 
    if ( debugging $self || debugging scalar caller ) {
       debug( "vcp: queuing ", $_->as_string ) for @_ ;
@@ -90,7 +90,7 @@ Sets the list of revs.
 =cut
 
 sub set {
-   my VCP::Revs $self = shift ;
+   my VCP::Revs $self = CORE::shift ;
 
    if ( debugging $self || debugging scalar caller ) {
       debug( "vcp: queuing ", $_->as_string ) for @_ ;
@@ -109,7 +109,7 @@ Gets the list of revs.
 =cut
 
 sub get {
-   my VCP::Revs $self = shift ;
+   my VCP::Revs $self = CORE::shift ;
 
    return @{$self->{REVS}} ;
 }
@@ -126,7 +126,7 @@ and that's not your package.  See L<VCP::Dest/rev_cmp_sub> for more details.
 =cut
 
 sub sort {
-   my VCP::Revs $self = shift ;
+   my VCP::Revs $self = CORE::shift ;
 
    my ( $sort_func ) = @_ ;
 
@@ -145,7 +145,7 @@ Call L</sort> before calling this :-).
 =cut
 
 sub shift {
-   my VCP::Revs $self = shift ;
+   my VCP::Revs $self = CORE::shift ;
 
    return shift @{$self->{REVS}} ;
 }
@@ -158,7 +158,7 @@ Returns an ARRAY ref of all revs.
 =cut
 
 sub as_array_ref {
-   my VCP::Revs $self = shift ;
+   my VCP::Revs $self = CORE::shift ;
 
    return $self->{REVS} ;
 }

@@ -1,5 +1,15 @@
 CHANGES for vcp - Version CoPy
 
+0.062 Tue Apr 17 14:07:48 EDT 2001
+   - Added the requirement to install expat first to INSTALL
+   - Commented out the call to "vcp help" to prevent perldoc from whining
+     when run as root.  Notified Brad Appleton, Pod::Usage's maintainer
+     to see what might be done, but it's not a big deal for me unless
+     an actual, real live user runs "vcp help" when logged in as root.
+   - Converted shift to be CORE::shift in VCP::Revs, sinne perl 5.6.1
+     now complains that it had to resolve shift as CORE::shift due to
+     the sub shift in there.
+
 0.061 Sun Apr 15 15:56:32 EDT 2001
    - Removed a couple of 5.6.0 dependancies
    - require perl 5.00503 in Makefile.PL, not sure how far back we could

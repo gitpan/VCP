@@ -5,7 +5,7 @@ use vars qw( $VERSION ) ;
 
 require 5.00503 ;
 
-$VERSION = 0.061 ;
+$VERSION = 0.062 ;
 
 my @programs = qw( vcp ) ;
 
