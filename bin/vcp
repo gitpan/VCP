@@ -164,10 +164,11 @@ use XML::Doctype ;
    ## from there.
    Getopt::Long::Configure( qw( no_auto_abbrev no_bundling no_permute ) ) ;
    GetOptions(
-      'debug|d=s'         => sub {
+      'debug|d=s'   => sub {
          enable_debug( length $_[1] ? split /,/, $_[1] : () )
       },
-      'help|h|?'          => \&help_and_exit,
+      'help|h|?'    => \&help_and_exit,
+      'versions'    => \&versions_and_exit,
    ) or options_and_exit() ;
 
    usage_and_exit() unless @ARGV ;
@@ -271,7 +272,7 @@ sub load_module {
    {
       local $@ ;
       my $v = eval "require '$filename.pm'; 1" ;
-      return undef if $@ && $@ =~ /^Can't locate / ;
+      return undef if $@ && $@ =~ /^Can't locate $filename.pm/ ;
       $x = $@ ;
    }
    die $x if $x ;
@@ -297,7 +298,7 @@ sub list_modules {
       $seen{$_} = 1 for @files ;
    }
 
-   my $list = join( ', ', sort keys %seen ) ;
+   my $list = join( ', ', map "$_:", sort keys %seen ) ;
 
    $list =~ s/,([^,]*)$/ or$1/ ;
    return $list ;
@@ -317,6 +318,93 @@ sub options_and_exit {
 sub help_and_exit {
    require Pod::Usage ;
    Pod::Usage::pod2usage( -verbose => 2, -exitval => 0 ) ;
+}
+
+
+sub versions_and_exit {
+   require File::Find ;
+
+   my $require_module = sub {
+      return unless m/\.pm$/ ;
+      ## Avoid "name used only once" warning
+      my $fn = $File::Find::name ;
+      $fn = $File::Find::name ;
+      require $fn ;
+   } ;
+
+   File::Find::find(
+      {
+         no_chdir => 1,
+	 wanted   => $require_module,
+      },
+      grep -d $_,
+      map {
+         ( File::Spec->catdir( $_, "lib", "VCP", "Source" ),
+         File::Spec->catdir( $_, "lib", "VCP", "Dest" ),
+	 ) ;
+      } @INC
+   ) ;
+
+   my %vers ;
+   my %no_vers ;
+
+   my $recur ;
+   $recur = sub {
+      my ( $pkg_namespace ) = @_ ;
+
+      no strict "refs" ;
+
+      my $pkg_name = substr( $pkg_namespace, 0, -2 ) ;
+
+      ## The grep means "only bother with namespaces that contain somthing
+      ## other than child namespaces.
+      if ( ! grep /::/, keys %{$pkg_namespace} ) {
+         if ( exists ${$pkg_namespace}{VERSION} ) {
+	    $vers{$pkg_name} = ${"${pkg_namespace}VERSION"}
+	 }
+	 else {
+	    $no_vers{$pkg_name} = undef ;
+	 }
+      }
+
+      my $prefix = $pkg_namespace eq "main::" ? "" : $pkg_namespace ;
+      for ( keys %{$pkg_namespace} ) {
+	 next unless /::$/ ;
+	 next if /^main::/ ;
+	 $recur->( "$prefix$_" ) ;
+      }
+   } ;
+
+   $recur->( "main::" ) ;
+
+   my $max_len = 0 ;
+   $max_len = length > $max_len ? length : $max_len for keys %vers ;
+      
+   print "Package \$VERSIONs:\n" ;
+   for ( sort keys %vers ) {
+      printf(
+         "   %-${max_len}s: %s\n",
+	 $_,
+	 defined $vers{$_} ? $vers{$_} : "undef"
+      ) ;
+   }
+
+   print "No \$VERSION found for: ", join( ", ", sort keys %no_vers ), "\n" ;
+
+   $max_len = 0 ;
+   $max_len = length > $max_len ? length : $max_len for values %INC ;
+   print "\nFile sizes:\n" ;
+   for ( sort values %INC ) {
+      printf( "   %-${max_len}s: %7d\n", $_, -s $_ ) ;
+   }
+
+   print "\nperl -V:\n" ;
+
+   my $v = `$^X -V` ;
+   $v =~ s/^/   /gm ;
+   print $v ;
+
+   exit ;
 }
 
 =head1 AUTHOR

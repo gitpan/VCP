@@ -18,26 +18,41 @@ use IPC::Run qw( run ) ;
 
 my $cwd = cwd ;
 
-## We always run vcp by doing a $^X vcp, to make sure that vcp runs under
+my %seen ;
+my @perl = ( $^X, map {
+      my $s = $_ ;
+      $s = File::Spec->rel2abs( $_ ) ;
+      "-I$s" ;
+   } grep ! $seen{$_}++, @INC
+) ;
+
+## We always run vcp by doing a @perl, vcp, to make sure that vcp runs under
 ## the same version of perl that we are running under.
 my $vcp = 'vcp' ;
 $vcp = "bin/$vcp"    if -x "bin/$vcp" ;
 $vcp = "../bin/$vcp" if -x "../bin/$vcp" ;
 
-$vcp = File::Spec->catfile( $cwd, $vcp ) ;
+$vcp = File::Spec->rel2abs( $vcp ) ;
+
+my @vcp = ( @perl, $vcp ) ;
 
 my $t = -d 't' ? 't/' : '' ;
 
-my $p4repo = File::Spec->catdir( cwd, 'tmp', "cvsp4repo" ) ;
-my $p4work = File::Spec->catdir( cwd, 'tmp', "cvsp4work" ) ;
+my $tmp = File::Spec->tmpdir ;
+
+my $p4repo = File::Spec->catdir( $tmp, "cvsp4repo" ) ;
+my $p4work = File::Spec->catdir( $tmp, "cvsp4work" ) ;
 my ( $p4user, $p4client, $p4port ) = qw( p4_t_user p4_t_client 19666 ) ;
 my $p4spec = "p4:$p4user($p4client):\@$p4port:" ;
 
-my $cvsroot = File::Spec->catdir( cwd, 'tmp', "cvsroot" ) ;
-my $cvswork = File::Spec->catdir( cwd, 'tmp', "cvswork" ) ;
-my $module = 'foo' ;  ## Must match the rev_root in the testrevml files
+my $cvsroot = File::Spec->catdir( $tmp, "cvsroot" ) ;
+my $cvswork = File::Spec->catdir( $tmp, "cvswork" ) ;
 
-my $perl = $^X ;
+END {
+   rmtree [ $p4repo, $p4work, $cvsroot, $cvswork ] ;
+}
+
+my $module = 'foo' ;  ## Must match the rev_root in the testrevml files
 
 sub slurp {
    my ( $fn ) = @_ ;
@@ -49,6 +64,7 @@ sub slurp {
 my $max_change_id ;
 
 my @tests = (
+sub {},  ## Mult. ok()s in next sub{}.
 
 sub {
    my $type = 'cvs' ;
@@ -65,21 +81,21 @@ sub {
       my $out ;
       my $err ;
       ## $in and $out allow us to avoide execing diff most of the time.
-      run( [ $perl, $vcp, "revml:$infile", "cvs:$cvsroot:$module" ], \undef )
+      run( [ @vcp, "revml:$infile", "cvs:$cvsroot:$module" ], \undef )
 	 or die "`$vcp revml:$infile cvs:$cvsroot:$module` returned $?" ;
 
+      ok( 1 ) ;
+
+      chdir $cvswork or die "$!: '$cvswork'" ;
+      run [qw( cvs -d ), $cvsroot, "checkout", $module],
+	 \undef
+	 or die $! ;
+
       run(
-         [ $perl, $vcp, "cvs:$cvsroot:$module", qw( -r 1.1: ) ], \undef, \$out , \$err,
-         init => sub {
-	    ## Gotta use a working directory with a checked-out version
-	    chdir $cvswork or die $! . ": '$cvswork'" ;
-	    run [qw( cvs -d ), $cvsroot, "checkout", $module],
-	       \undef, \*STDERR, \*STDERR
-	       or die $! ;
-	 }
+         [ @vcp, "cvs:$cvsroot:$module", qw( -r 1.1: ) ], \undef, \$out
       ) or die "`$vcp cvs:$cvsroot:$module -r 1.1:` returned $?" ;
 
-      print STDERR $err if defined $err ;
+      chdir $cwd or die "$!: '$cwd'" ;
 
       my $in = slurp $infile ;
 
@@ -124,6 +140,8 @@ $out =~ s{<user_id>.*?</user_id>}{<user_id><!--deleted by cvs.t--></user_id>}sg 
    }
 },
 
+sub {},  ## Mult. ok()s in next sub{}.
+
 sub {
    my $type = 'cvs' ;
    my $infile  = $t . "test-$type-in-0.revml" ;
@@ -144,15 +162,17 @@ sub {
       run [qw( cvs -d ), $cvsroot, "checkout", $module], \undef
 	 or die $! ;
 
+      ok( 1 ) ;
+
       run(
-         [ $perl, $vcp, "cvs:$cvsroot:$module", qw( -r 1.1: ),
+         [ @vcp, "cvs:$cvsroot:$module", qw( -r 1.1: ),
 	    $p4spec, "-w", $p4work
 	 ], \undef
       ) or die "`$vcp cvs:$cvsroot:$module -r 1.1:` returned $?" ;
 
       chdir $cwd or die $! ;
 
-      run [ $perl, $vcp, "$p4spec//depot/..." ], \undef, \$out ;
+      run [ @vcp, "$p4spec//depot/..." ], \undef, \$out ;
 
       my $in = slurp $infile ;
 
@@ -214,6 +234,8 @@ $out =~ s{\s*<p4_info>.*?</p4_info>}{}sg ;
 
 sub { skip( ! defined $max_change_id, $max_change_id, 3, "Max change_id in cvs->p4 transfer" ) },
 
+sub {},  ## Mult. ok()s in next sub{}.
+
 sub {
    my $type = 'cvs' ;
    my $infile  = $t . "test-$type-in-1.revml" ;
@@ -228,8 +250,10 @@ sub {
    eval {
       my $out ;
       ## $in and $out allow us to avoid execing diff most of the time.
-      run( [ $perl, $vcp, "revml:$infile", "cvs:$cvsroot:$module" ], \undef )
+      run( [ @vcp, "revml:$infile", "cvs:$cvsroot:$module" ], \undef )
 	 or die "`$vcp revml:$infile cvs:$cvsroot:$module` returned $?" ;
+
+      ok( 1 ) ;
 
       ## Gotta use a working directory with a checked-out version
       chdir $cvswork or die $! . ": '$cvswork'" ;
@@ -238,7 +262,7 @@ sub {
 	 or die $! ;
 
       run(
-         [ $perl, $vcp, "cvs:$cvsroot:$module", qw( -r ch_4: -f ) ],
+         [ @vcp, "cvs:$cvsroot:$module", qw( -r ch_4: -f ) ],
 	    \undef, \$out ,
       ) or die "`$vcp cvs:$cvsroot:$module -r ch_4:` returned $?" ;
 
@@ -287,6 +311,8 @@ $out =~ s{<user_id>.*?</user_id>}{<user_id><!--deleted by cvs.t--></user_id>}sg 
    }
 },
 
+sub {},  ## Mult. ok()s in next sub{}.
+
 sub {
    my $type = 'cvs' ;
    my $infile  = $t . "test-$type-in-1-bootstrap.revml" ;
@@ -307,8 +333,10 @@ sub {
          \undef, \*STDERR, \*STDERR
 	 or die $! ;
 
+      ok( 1 ) ;
+
       run(
-         [ $perl, $vcp, "cvs:$cvsroot:$module", qw( -r ch_4: -f --bootstrap=** ) ],
+         [ @vcp, "cvs:$cvsroot:$module", qw( -r ch_4: -f --bootstrap=** ) ],
 	    \undef, \$out ,
       ) or die "`$vcp cvs:$cvsroot:$module -r ch_4:` returned $?" ;
 
@@ -428,6 +456,7 @@ sub launch_p4d {
       exec 'p4d', '-f', '-r', $p4repo ;
       die "$!: p4d" ;
    }
+   sleep 1 ;
    ## Wait for p4d to start.  'twould be better to wait for P4PORT to
    ## be seen.
    select( undef, undef, undef, 0.250 ) ;

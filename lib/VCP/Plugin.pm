@@ -312,6 +312,8 @@ Makes a directory and any necessary parent directories.
 The default mode is 770.  Does some debug logging if any directories are
 created.
 
+Returns nothing.
+
 =cut
 
 sub mkdir {
@@ -324,6 +326,8 @@ sub mkdir {
       debug "vcp: mkdir $path, ", sprintf "%04o", $mode if debugging $self ;
       mkpath( $path, 0, $mode ) ;
    }
+
+   return ;
 }
 
 
@@ -337,6 +341,8 @@ Makes the parent directory of a filename and all directories down to it.
 The default mode is 770.  Does some debug logging if any directories are
 created.
 
+Returns the path of the parent directory.
+
 =cut
 
 sub mkpdir {
@@ -347,6 +353,8 @@ sub mkpdir {
    my ( undef, $dir ) = fileparse( $path ) ;
 
    $self->mkdir( $dir, $mode ) ;
+
+   return $dir ;
 }
 
 
@@ -749,7 +757,7 @@ sub run {
    my VCP::Plugin $self = shift ;
    my $cmd_line = shift ;
 
-   debug "vcp: running ", join( ' ', @$cmd_line )
+   debug "vcp: running ", join( ' ', map "'$_'", @$cmd_line )
       if debugging $self ;
    
    return IPC::Run::run( $cmd_line, \undef, @_ ) ;
@@ -798,7 +806,7 @@ sub AUTOLOAD {
    unshift @redirs, '<', \undef
       unless grep $_ eq '<', @redirs ;
 
-   debug "vcp: running ", join( ' ', $self->command, @$args )
+   debug "vcp: running ", join( ' ', map "'$_'", $self->command, @$args )
       if debugging $self, join( '::', ref $self, $cmd ) ;
    
    my $h = IPC::Run::harness(

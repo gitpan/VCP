@@ -14,6 +14,8 @@ VCP::Rev - VCP's concept of a revision
 
 =cut
 
+$VERSION = 1 ;
+
 use strict ;
 
 use Carp ;
@@ -244,9 +246,9 @@ sub as_string {
    my @v = map(
       defined $_ ? $_ : "<undef>",
       $self->is_base_rev
-	 ? map $self->$_, qw( name rev_id change_id type )
+	 ? map $self->$_(), qw( name rev_id change_id type )
 	 : map(
-	    $_ eq 'time' ? scalar localtime $self->$_ : $self->$_,
+	    $_ eq 'time' ? scalar localtime $self->$_() : $self->$_(),
 	    qw(name rev_id change_id type action time user_id )
 	 )
    ) ;

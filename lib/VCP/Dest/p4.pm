@@ -27,6 +27,8 @@ that the current client's view point to.
 
 =cut
 
+$VERSION = 1 ;
+
 use strict ;
 use vars qw( $debug ) ;
 

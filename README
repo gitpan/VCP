@@ -39,16 +39,14 @@ as soon as the appropriate license is agreed upon.
 
 INSTALLATION
 
-Uncompress and untar the source distribution, available on CPAN.  Then do
-the standard Perl module distribution install:
+See the INSTALL file for details, but a normal install should be done by
+doing a
 
-   make
-   make test
-   make install
+   $ perl -MCPAN -eshell
+   cpan> install VCP
 
-You should then have a VCP tree added to your equivalent of
-/usr/local/lib/perl5/site_perl/VVV/VCP and a perl program "vcp" installed
-in a bin directory somewhere (exactly where is system config dependant).
+.  This convinces CPAN to do all the dirty work of fetching and installing
+required modules for you.
 
 
 THINGS TO READ

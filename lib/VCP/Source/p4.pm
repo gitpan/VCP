@@ -93,6 +93,8 @@ case of exporting a sub-tree of a larger project.  I think.
 
 =cut
 
+$VERSION = 1.0 ;
+
 use strict ;
 
 use Carp ;
@@ -581,7 +583,8 @@ sub get_revs {
    my @dispatcher_args ;
    my @rev_specs ;
 
-   for my VCP::Rev $r ( @revs ) {
+   for ( @revs ) {
+      my VCP::Rev $r = $_ ;  ## 5.00503 doesn't have for my Foo $foo (...)
       next if defined $r->action && $r->action eq "delete" ;
       my $fn  = $r->name ;
       my $rev = $r->rev_id ;

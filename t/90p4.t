@@ -19,30 +19,45 @@ use IPC::Run qw( run ) ;
 my $cwd = cwd ;
 
 ## TODO: Test bootstrap mode
+my %seen ;
+my @perl = ( $^X, map {
+      my $s = $_ ;
+      $s = File::Spec->rel2abs( $_ ) ;
+      "-I$s" ;
+   } grep ! $seen{$_}++, @INC
+) ;
 
-## We always run vcp by doing a $perl vcp, to make sure that vcp runs under
+## We always run vcp by doing a @perl, vcp, to make sure that vcp runs under
 ## the same version of perl that we are running under.
-my $vcp = 'bin/vcp' ;
+my $vcp = 'vcp' ;
+$vcp = "bin/$vcp"    if -x "bin/$vcp" ;
 $vcp = "../bin/$vcp" if -x "../bin/$vcp" ;
-$vcp = File::Spec->catfile( $cwd, $vcp ) ;
+
+$vcp = File::Spec->rel2abs( $vcp ) ;
+
+my @vcp = ( @perl, $vcp ) ;
 
 my $t = -d 't' ? 't/' : '' ;
 
-my $p4repo = File::Spec->catdir( cwd, 'tmp', "p4repo" ) ;
-my $p4work = File::Spec->catdir( cwd, 'tmp', "p4work" ) ;
+my $tmp = File::Spec->tmpdir ;
+my $p4repo = File::Spec->catdir( $tmp, "p4repo" ) ;
+my $p4work = File::Spec->catdir( $tmp, "p4work" ) ;
 my ( $p4user, $p4client, $p4port ) = qw( p4_t_user p4_t_client 19666 ) ;
 my $p4spec = "p4:$p4user($p4client):\@$p4port:" ;
 
-my $cvsroot = File::Spec->catdir( cwd, 'tmp', "p4cvsroot" ) ;
-my $cvswork = File::Spec->catdir( cwd, 'tmp', "p4cvswork" ) ;
+my $cvsroot = File::Spec->catdir( $tmp, "p4cvsroot" ) ;
+my $cvswork = File::Spec->catdir( $tmp, "p4cvswork" ) ;
+
+END {
+   rmtree [ $p4repo, $p4work, $cvsroot, $cvswork ] ;
+}
+
 $ENV{CVSROOT} = $cvsroot;
 my $cvs_module = 'depot' ;
 
 my $depot = "//depot" ;
 
 my $incr_change ; # what change number to start incremental export at
-
-my $perl = $^X ;
 
 sub slurp {
    my ( $fn ) = @_ ;
@@ -73,12 +88,12 @@ sub {
    eval {
       my $out ;
       ## $in and $out allow us to avoide execing diff most of the time.
-      run [ $perl, $vcp, "revml:$infile", $p4spec, '-w', $p4work ], \undef
+      run [ @vcp, "revml:$infile", $p4spec, '-w', $p4work ], \undef
 	 or die "`$vcp revml:$infile $p4spec` returned $?" ;
 
       ok( 1 ) ;
 
-      run [ $perl, $vcp, "$p4spec..." ], \undef, \$out 
+      run [ @vcp, "$p4spec..." ], \undef, \$out 
 	 or die "`$vcp $p4spec...` returned $?" ;
 
       my $in = slurp $infile ;
@@ -120,7 +135,7 @@ sub {
    ## Test a single file extraction from a p4 repo.  This file exists in
    ## change 1.
    my $out ;
-   run( [$perl, $vcp, "$p4spec//depot/add/f1"], \undef, \$out ) ;
+   run( [@vcp, "$p4spec//depot/add/f1"], \undef, \$out ) ;
    ok(
       $out,
       qr{<rev_root>depot/add</.+<name>f1<.+<rev_id>1<.+<rev_id>2<.+</revml>}s
@@ -131,7 +146,7 @@ sub {
    ## Test a single file extraction from a p4 repo.  This file does not exist
    ## in change 1.
    my $out ;
-   run( [$perl, $vcp, "$p4spec//depot/add/f2"], \undef, \$out ) ;
+   run( [@vcp, "$p4spec//depot/add/f2"], \undef, \$out ) ;
    ok(
       $out,
       qr{<rev_root>depot/add</.+<name>f2<.+<change_id>2<.+<change_id>3<.+</revml>}s
@@ -157,7 +172,7 @@ sub {
    my $diff = '' ;
    eval {
       my $out ;
-      run( [ $perl, $vcp, "$p4spec//depot/...", "cvs" ], \undef )
+      run( [ @vcp, "$p4spec//depot/...", "cvs" ], \undef )
 	 or die "`$vcp $p4spec//depot/... cvs` returned $?" ;
 
       ok( 1 ) ;
@@ -167,7 +182,7 @@ sub {
       run [qw( cvs checkout ), $cvs_module], \undef, \*STDERR
 	 or die $! ;
 
-      run( [ $vcp, "cvs:$cvs_module", qw( -r 1.1: ) ], \undef, \$out )
+      run( [ @vcp, "cvs:$cvs_module", qw( -r 1.1: ) ], \undef, \$out )
 	 or die "`$vcp cvs:$cvs_module -r 1.1: ` returned $?" ;
 
       chdir $cwd or die $! ;
@@ -244,12 +259,12 @@ sub {
       my $out ;
 
       ## $in and $out allow us to avoide execing diff most of the time.
-      run [ $perl, $vcp, "revml:$infile", "$p4spec", '-w', $p4work ], \undef
+      run [ @vcp, "revml:$infile", "$p4spec", '-w', $p4work ], \undef
 	 or die "`$vcp revml:$infile $p4spec` returned $?" ;
 
       ok( 1 ) ;
 
-      run [ $perl, $vcp, "$p4spec...\@$incr_change,#head" ], \undef, \$out
+      run [ @vcp, "$p4spec...\@$incr_change,#head" ], \undef, \$out
 	 or die "`$vcp $p4spec...\@$incr_change,#head` returned $?" ;
 
       my $in = slurp $infile ;
@@ -304,7 +319,7 @@ sub {
    eval {
       my $out ;
 
-      run( [ $perl, $vcp, "$p4spec...\@$incr_change,#head", "--bootstrap=**" ],
+      run( [ @vcp, "$p4spec...\@$incr_change,#head", "--bootstrap=**" ],
          \undef, \$out
       ) or die(
 	 "`$vcp $p4spec...\@$incr_change,#head --bootstrap=**` returned $?"
@@ -399,6 +414,7 @@ sub launch_p4d {
       exec 'p4d', '-f', '-r', $p4repo ;
       die "$!: p4d" ;
    }
+   sleep 1 ;
    ## Wait for p4d to start.  'twould be better to wait for P4PORT to
    ## be seen.
    select( undef, undef, undef, 0.250 ) ;

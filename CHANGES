@@ -1,5 +1,36 @@
 CHANGES for vcp - Version CoPy
 
+0.061 Sun Apr 15 15:56:32 EDT 2001
+   - Removed a couple of 5.6.0 dependancies
+   - require perl 5.00503 in Makefile.PL, not sure how far back we could
+     easily go.
+   - Added logic to t/*.t to set -I more robustly by calling
+     File::Spec->abs2rel on @INC and the path to bin/vcp and pass them
+     on to child perls, so they could find their libraries.  This fixed
+     a nasty chicken-and-egg problem whereby you could only run the tests
+     after installing.
+   - t/90cvs.t and t/90p4.t use File::Spec->tmpdir for the repositories
+     and workspaces they build.  They also delete these temp dirs when
+     done.
+   - Made Makefile.PL require a minimum of XML::AutoWriter v.036
+
+0.06 Wed Dec 20 23:19:15 EST 2000
+   - bin/vcp: Added --versions, which loads all modules and checks them
+     for a $VERSION and print the results out.  This should help with
+     diagnosing out-of-sync modules.
+   - Added $VERSION vars to a few modules :-).  Forgot to increment any
+     $VERSION strings.
+   - VCP::Dest::cvs: The directory "deeply" was not being `cvs add`ed on
+     paths like "a/deeply/nested/file", assuming "deeply" had no files
+     in it.
+   - VCP::Dest::revml: fixed a bug that was causing files with a lot of
+     linefeeds to be emitted in base64 instead of deltaed.  This means
+     most text files.
+   - Various minor cleanups of diagnostics and error messages, including
+     exposing "Can't locate Foo.pm" when a VCP::Source or VCP::Dest
+     module depends on a module that's not installed, as reported by
+     Jeff Anton.  
+
 0.05 Mon Dec 18 07:27:53 EST 2000
    - Use `p4 labels //...@label` command as per Rober Cowham's suggestion, with
      the '-s' flag recommended by Christopher Siewald and

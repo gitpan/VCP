@@ -144,6 +144,8 @@ be ignored.
 
 =cut
 
+$VERSION = 1 ;
+
 use strict ;
 
 use Carp ;

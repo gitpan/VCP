@@ -18,6 +18,8 @@ tracts of RAM.
 
 =cut
 
+$VERSION = 1 ;
+
 use strict ;
 
 use Carp ;

@@ -1,0 +1,33 @@
+VCP Installation Instructions
+
+VCP is all Perl code, and uses a number of other Perl modules.  Installing
+these is a bit of a pain, but CPAN will do it for you automatically.  To
+install VCP using CPAN, do
+
+   $ perl -MCPAN -eshell
+   cpan> install VCP
+
+If you have all of the required modules installed and you don't want to run CPAN
+for some reason, you can do the standard Perl module install sequence:
+
+   $ perl Makefile.PL
+   $ make 
+   $ make test
+   $ make install
+
+If you don't have all the required modules installed, the "perl Makefile.PL"
+step will tell you what's missing.  If it doesn't complain about something
+that laterturns up missing, it's a bug, please report it.
+
+If you want to install the required modules without installing VCP, do:
+
+   $ perl -MCPAN -e shell
+   cpan> make VCP
+
+Now you can work with a VCP development tree without having to manually install
+lots of modules manually.
+
+You could install the older version of VCP and work with the newer one, but
+then perl won't warn you if you forgot to set PERL5LIB correctly and you'll be
+working with mismatched libraries, some from the source tree and some older
+versions from the perl/site_lib/ tree.

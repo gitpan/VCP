@@ -11,10 +11,26 @@ use strict ;
 use Carp ;
 use Test ;
 use IPC::Run qw( run ) ;
+use File::Spec ;
 
-## We always run vcp by doing a $^X vcp, to make sure that vcp runs under
+my %seen ;
+my @perl = ( $^X, map {
+      my $s = $_ ;
+      $s = File::Spec->rel2abs( $_ ) ;
+      "-I$s" ;
+   } grep ! $seen{$_}++, @INC
+) ;
+
+## We always run vcp by doing a @perl, vcp, to make sure that vcp runs under
 ## the same version of perl that we are running under.
-my $vcp = 'bin/vcp' ;
+my $vcp = 'vcp' ;
+$vcp = "bin/$vcp"    if -x "bin/$vcp" ;
+$vcp = "../bin/$vcp" if -x "../bin/$vcp" ;
+
+$vcp = File::Spec->rel2abs( $vcp ) ;
+
+my @vcp = ( @perl, $vcp ) ;
+
 
 my $t = -d 't' ? 't/' : '' ;
 
@@ -43,7 +59,7 @@ my @tests = (
       eval {
 	 my $out ;
 	 ## $in and $out allow us to avoide execing diff most of the time.
-	 run( [ $^X, $vcp, "revml:$infile", "revml" ], \undef, \$out )
+	 run( [ @vcp, "revml:$infile", "revml" ], \undef, \$out )
 	    or die "`$vcp revml:$infile revml` returned $?" ;
 
 	 my $in = slurp( $infile ) ;

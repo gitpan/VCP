@@ -22,6 +22,8 @@ a temporary directory and use it to add, delete, and alter files.
 
 =cut
 
+$VERSION = 1 ;
+
 use strict ;
 use vars qw( $debug ) ;
 
@@ -194,11 +196,22 @@ sub handle_rev {
    else {
       ## TODO: Don't assume same filesystem or working link().
       {
-	 my ( undef, $work_dir ) = fileparse( $work_path ) ;
+	 my ( $vol, $work_dir, undef ) = File::Spec->splitpath( $work_path ) ;
 	 unless ( -d $work_dir ) {
-	    $self->mkpdir( $work_path ) ;
-	    ( undef, $work_dir ) = fileparse( $fn ) ;
-	    $self->cvs( ['add', $work_dir] ) ;
+	    my @dirs = File::Spec->splitdir( $work_dir ) ;
+	    my $this_dir = shift @dirs  ;
+	    my $base_dir = File::Spec->catpath( $vol, $this_dir, "" ) ;
+	    do {
+	       ## Warn: MacOS danger here: "" is like Unix's "..".  Shouldn;t
+	       ## ever be a problem, though.
+	       if ( length $base_dir && ! -d $base_dir ) {
+	          mkdir $base_dir, 0770 or die "vcp: $! making '$base_dir'" ;
+		  debug "vcp: mkdired '$base_dir' 0770" if debugging $self ;
+		  $self->cvs( ["add", $base_dir] ) ;
+	       }
+	       $this_dir = shift @dirs  ;
+	       $base_dir = File::Spec->catdir( $base_dir, $this_dir ) ;
+	    } while @dirs ;
 	 }
       }
       if ( -e $work_path ) {
@@ -225,7 +238,7 @@ sub handle_rev {
       if ( ! $saw ) {
 	 ## New file.
 	 my @bin_opts = $r->type ne "text" ? "-kb" : () ;
-	 $self->cvs( ["add", @bin_opts, "-m", $r->comment, $fn] ) ;
+	 $self->cvs( [ "add", @bin_opts, "-m", $r->comment, $fn ] ) ;
       }
 
       ## TODO: batch the commits when the comment changes or we see a

@@ -218,7 +218,7 @@ sub handle_rev {
       my $buf ;
       my $read = sysread( F, $buf, 100000 ) ;
       $buf = '' unless $read ;
-      my $bin_char_count = $buf =~ tr/\x00-\x1f\x7f-\xff// ;
+      my $bin_char_count = $buf =~ tr/\x00-\x08\x0b-\x1f\x7f-\xff// ;
       my $encoding =
 	 $bin_char_count * 20 > length( $buf ) * 76/57 ? "base64" : "none" ;
 
