@@ -40,6 +40,7 @@ use fields (
    'COMMAND',       ## The full path to the command-line.
    'COMMAND_CHDIR', ## Where to chdir to when running COMMAND
    'COMMAND_STDERR_FILTER', ## How to modify the stderr when running a command
+   'COMMAND_OK_RESULT_CODES', ## HASH keyed on acceptable COMMAND return vals
    'REV_ROOT',
    'SEEN',          ## HASH of previosly seen filename/revisions.
    'REPO_USER',     ## The user name to log in to the repository with, if any
@@ -75,6 +76,8 @@ sub new {
    $self->work_root( File::Spec->tmpdir, "vcp$$", $plugin_dir ) ;
    rmtree $self->work_root if -e $self->work_root ;
    $self->{SEEN} = {} ;
+
+   $self->{COMMAND_OK_RESULT_CODES} = { 0 => undef } ;
 
    return $self ;
 }
@@ -520,9 +523,11 @@ sub command_chdir {
    $self->command_stderr_filter( sub { my $t = shift ; $$t =~ ... } ) ;
 
 Some commands--cough*cvs*cough--just don't seem to be able to shut up
-on stderr.  This allows you to filter out expected whinging on stderr
-so that the command appears to run cleanly and doesn't cause $self->cmd(...)
-to barf when it sees expected output on stderr.
+on stderr.  Other times we need to watch stderr for some meaningful output.
+
+This allows you to filter out expected whinging on stderr so that the command
+appears to run cleanly and doesn't cause $self->cmd(...) to barf when it sees
+expected output on stderr.
 
 This can also be used to filter out intermittent expected errors that
 aren't errors in all contexts when they aren't actually errors.
@@ -533,6 +538,28 @@ sub command_stderr_filter {
    my VCP::Plugin $self = shift ;
    $self->{COMMAND_STDERR_FILTER} = $_[0] if @_ ;
    return $self->{COMMAND_STDERR_FILTER} ;
+}
+
+
+=item command_ok_result_codes
+
+   $self->command_ok_result_codes( 0, 1 ) ;
+
+Occasionally, a non-zero result is Ok.  this method lets you set a list
+of acceptable result codes.
+
+=cut
+
+sub command_ok_result_codes {
+   my VCP::Plugin $self = shift ;
+
+   if ( @_ ) {
+      %{$self->{COMMAND_OK_RESULT_CODES}} = () ;
+      @{$self->{COMMAND_OK_RESULT_CODES}}{@_} = () ;
+   }
+
+   return unless defined wantarray ;
+   return keys %{$self->{COMMAND_STDERR_FILTER}} ;
 }
 
 
@@ -812,7 +839,7 @@ sub AUTOLOAD {
       }
    }
 
-   ## In checking the result code, we assume the first on is the important
+   ## In checking the result code, we assume the first one is the important
    ## one.  This is done because a few callers pipe the first child's output
    ## in to a perl sub that then does a kill 9,$$ to effectively exit without
    ## calling DESTROY.
@@ -823,16 +850,18 @@ sub AUTOLOAD {
       join( ' ', $self->command, @$args ),
       " returned ",
       $h->full_result( 0 ),
+      " not ",
+      join( ', ', keys %{$self->{COMMAND_OK_RESULT_CODES}} ),
       "\n"
    )
-      if $h->full_result( 0 ) ;
+      unless exists $self->{COMMAND_OK_RESULT_CODES}->{$h->full_result( 0 )} ;
 
    die join( '', @errors ) if @errors ;
 
    Carp::cluck "Result of `", join( ' ', $self->command, @$args ), "` checked"
       if defined wantarray ;
 
-   return ! $h->result( 0 ) ;
+   return ;
 }
 
 

@@ -26,6 +26,7 @@ use Carp ;
 use Digest::MD5 ;
 use Fcntl ;
 use Getopt::Long ;
+use MIME::Base64 ;
 use RevML::Doctype ;
 use RevML::Writer ;
 use Symbol ;
@@ -118,6 +119,27 @@ sub _ISO8601(;$) {
    return sprintf( "%04d-%02d-%02d %02d:%02d:%02dZ", @f ) ;
 }
 
+sub _emit_characters {
+   my ( $w, $buf ) = @_ ;
+
+   $w->setDataMode( 0 ) ;
+
+   ## Note that we don't let XML munge \r to be \n!!
+   while ( $$buf =~ m{\G(?:
+      (   [\x00-\x08\x0b-\x1f\x7f-\xff])
+      | ([^\x00-\x08\x0b-\x1f\x7f-\xff]*)
+      )}gx
+   ) {
+      if ( defined $1 ) {
+	 $w->char( "", code => sprintf( "0x%02x", ord $1 ) ) ;
+      }
+      else {
+	 $w->characters( $2 ) ;
+      }
+   }
+
+}
+
 
 sub handle_rev {
    my VCP::Dest::revml $self = shift ;
@@ -144,6 +166,12 @@ sub handle_rev {
 
    my VCP::Rev $saw = $self->seen( $r ) ;
 
+   ## If there's no work path for the current file, keep the previous one.
+   ## This is a cheat that allows us to diff against the last known version
+   ## if a file is deleted and then re-added.  Without this line, we would
+   ## have to include the new version of the file.
+   $self->seen( $saw ) if $saw && ! defined $r->work_path ;
+
    my $fn = $r->name ;
 
    my $is_base_rev = $r->is_base_rev ;
@@ -168,8 +196,13 @@ sub handle_rev {
    ## Sorted for readability & testability
    $w->label( $_ ) for sort $r->labels ;
 
-   $w->comment( $r->comment )
-      if defined $r->comment && length $r->comment ;
+   if ( defined $r->comment && length $r->comment ) {
+      $w->start_comment ;
+      my $c = $r->comment ;
+      _emit_characters( $w, \$c ) ;
+      $w->end_comment ;
+      $w->setDataMode( 1 ) ;
+   }
 
    my $digestion ;
    my $cp = $r->work_path ;
@@ -182,16 +215,27 @@ sub handle_rev {
    }
    else {
       sysopen( F, $cp, O_RDONLY ) or die "$!: $cp" ;
+      my $buf ;
+      my $read = sysread( F, $buf, 100000 ) ;
+      $buf = '' unless $read ;
+      my $bin_char_count = $buf =~ tr/\x00-\x1f\x7f-\xff// ;
+      my $encoding =
+	 $bin_char_count * 20 > length( $buf ) * 76/57 ? "base64" : "none" ;
 
-      if ( ! $saw ) {
-	 $w->start_content( encoding => 'none' ) ;
-	 ## TODO: Encode binary files
+      if ( ! $saw || ! defined $saw->work_path || $encoding ne "none" ) {
+	 $w->start_content( encoding => $encoding ) ;
 	 while () {
-	    my $buf ;
-	    last unless sysread( F, $buf, 100000 ) ;
-	    $w->characters( $buf ) ;
+	    last unless $read ;
+	    if ( $encoding eq "none" ) {
+	       _emit_characters( $w, \$buf ) ;
+	    }
+	    else {
+	       $w->characters( encode_base64( $buf ) ) ;
+	    }
+	    $read = sysread( F, $buf, 100000 ) ;
 	 }
 	 $w->end_content ;
+	 $w->setDataMode( 1 ) ;
       }
       else {
 	 $w->base_name(   $saw->name )
@@ -202,13 +246,23 @@ sub handle_rev {
 
 	 my $old_cp = $saw->work_path ;
 
+	 die "vcp: no old work path for '", $saw->name, "'\n"
+	    unless defined $old_cp && length $old_cp ;
+
+	 die "vcp: old work path '$old_cp' not found for '", $saw->name, "'\n"
+	    unless -f $old_cp ;
+
 	 ## TODO: Use Algorithm::Diff.  Need to copy & pased newdiff.pl, then
 	 ## cut it down.
 
+         ## TODO: Include entire contents if diff is larger than the contents.
+
 	 ## Accumulate a bunch of output so that characters can make a
 	 ## knowledgable CDATA vs &lt;&amp; escaping decision.
+	 ## We use '-a' since we don't wan't NULs and other control chars to
+	 ## make diff think it's binary.
 	 $self->run(
-	    [qw( diff -u ), $old_cp, $cp],
+	    [qw( diff -a -u ), $old_cp, $cp],
 	       '|', sub {
 		  $/ = "\n" ;
 		  <STDIN> ; <STDIN> ;     ## Throw away first two lines
@@ -225,10 +279,11 @@ sub handle_rev {
 		  kill 9, $$ ;  ## Avoid calling DESTROY()s
 	       },
 	       '>', sub {
-		  $w->characters( shift ) ;
+		  _emit_characters( $w, \$_[0] ) ;
 	       },
 	 ) ;
 	 $w->end_delta ;
+	 $w->setDataMode( 1 ) ;
       }
       $digestion = 1 ;
    }

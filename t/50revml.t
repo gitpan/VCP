@@ -49,7 +49,7 @@ my @tests = (
 	 my $in = slurp( $infile ) ;
 	 if (
 	    $in ne $out
-	    && run( [ 'diff', '-u', $infile, '-' ], \$out, '>', \$diff )
+	    && run( [ 'diff', '-a', '-u', $infile, '-' ], \$out, '>', \$diff )
 	    && $? != 256
 	 ) {
 	    die "`diff -u $infile -` returned $?" ;

@@ -2,12 +2,14 @@ CHANGES
 MANIFEST
 MANIFEST.SKIP
 README
+TODO
 Makefile.PL
 bin/gentrevml
 bin/vcp
 lib/RevML/Doctype.pm
 lib/RevML/Doctype/v0_26.pm
 lib/RevML/Doctype/v0_27.pm
+lib/RevML/Doctype/v0_28.pm
 lib/RevML/Writer.pm
 lib/VCP.pm
 lib/VCP/Debug.pm

@@ -39,6 +39,12 @@ use base 'VCP::Dest' ;
 use fields (
    'CVS_CVSROOT',    ## What to pass using -d.
    'CVS_CHANGE_ID',  ## The current change_id in the rev_meta sequence, if any
+   'CVS_LAST_MOD_TIME',  ## A HASH keyed on working files of the mod_times of
+                     ## the previous revisions of those files.  This is used
+		     ## to make sure that new revision get a different mod_time
+		     ## so that CVS never thinks that a new revision hasn't
+		     ## changed just because the VCP::Source happened to create
+		     ## two files with the same mod_time.
 ) ;
 
 =item new
@@ -148,6 +154,7 @@ sub cvs {
    my VCP::Dest::cvs $self = shift ;
 
    unshift @{$_[0]}, $self->cvsroot_cvs_option ;
+
    return $self->SUPER::cvs( @_ ) ;
 }
 
@@ -193,25 +200,32 @@ sub handle_rev {
 	    ( undef, $work_dir ) = fileparse( $fn ) ;
 	    $self->cvs( ['add', $work_dir] ) ;
 	 }
-	 if ( -e $work_path ) {
-	    unlink $work_path or die "$! unlinking $work_path" ;
-	 }
-
-	 link $r->work_path, $work_path
-	    or die "$! linking '", $r->work_path, "' -> $work_path" ;
-
-	 if ( defined $r->mod_time ) {
-	    utime $r->mod_time, $r->mod_time, $work_path
-	       or die "$! changing times on $work_path" ;
-	 }
-	 else {
-#	    warn "vcp: no modification time available for $fn\n" ;
-	 }
       }
+      if ( -e $work_path ) {
+	 unlink $work_path or die "$! unlinking $work_path" ;
+      }
+
+      link $r->work_path, $work_path
+	 or die "$! linking '", $r->work_path, "' -> $work_path" ;
+
+      if ( defined $r->mod_time ) {
+	 utime $r->mod_time, $r->mod_time, $work_path
+	    or die "$! changing times on $work_path" ;
+      }
+
+      my ( $acc_time, $mod_time ) = (stat( $work_path ))[8,9] ;
+      if ( ( $self->{CVS_LAST_MOD_TIME}->{$work_path} || 0 ) == $mod_time ) {
+         ++$mod_time ;
+	 debug "vcp: tweaking mod_time on '$work_path'" if debugging $self ;
+	 utime $acc_time, $mod_time, $work_path
+	    or die "$! changing times on $work_path" ;
+      }
+      $self->{CVS_LAST_MOD_TIME}->{$work_path} = $mod_time ;
 
       if ( ! $saw ) {
 	 ## New file.
-	 $self->cvs( ['add', '-m', $r->comment, $fn] ) ;
+	 my @bin_opts = $r->type ne "text" ? "-kb" : () ;
+	 $self->cvs( ["add", @bin_opts, "-m", $r->comment, $fn] ) ;
       }
 
       ## TODO: batch the commits when the comment changes or we see a

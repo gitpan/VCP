@@ -52,6 +52,7 @@ use Carp ;
 use Fcntl ;
 use Getopt::Long ;
 use Digest::MD5 ;
+use MIME::Base64 ;
 use RevML::Doctype ;
 use Symbol ;
 use UNIVERSAL qw( isa ) ;
@@ -78,6 +79,7 @@ use fields (
    'WORK_FH',   ## The filehandle of working file
    'REV',       ## The VCP::Rev containing all of this rev's meta info
    'STACK',     ## A stack of currently open elements
+   'UNDECODED_CONTENT', ## Base64 content waiting to be decoded.
 ) ;
 
 
@@ -196,16 +198,51 @@ sub parse_revml_file {
    my @stack ;
    $self->{STACK} = \@stack ;
 
+   my $char_handler = sub {
+      my $expat = shift ;
+      my $pelt = $stack[-1] ; ## parent element
+      my $tag = $pelt->{NAME} ;
+      my $content = $pelt->{CONTENT} ;
+      if ( defined $content ) {
+	 if ( @$content && $content->[-1]->{TYPE} eq 'PCDATA' ) {
+	    $content->[-1]->{PCDATA} .= $_[0] ;
+	 }
+	 else {
+	    push @$content, { TYPE => 'PCDATA', PCDATA => $_[0] } ;
+	 }
+      }
+      my $sub = "$tag\_characters" ;
+      $self->$sub( @_ ) if $self->can( $sub ) ;
+   } ;
+
    my $p = XML::Parser->new(
       Handlers => {
          Start => sub {
 	    my $expat = shift ;
 	    my $tag = shift ;
 
+	    if ( $tag eq "char" ) {
+	       while ( @_ ) {
+	          my ( $attr, $value ) = ( shift, shift ) ;
+#print STDERR $value, "=" ;
+		  if ( $attr eq "code" ) {
+		     if ( $value =~ s{^0x}{} ) {
+			$value = chr( hex( $value ) ) ;
+		     }
+		     else {
+			$value = chr( $value ) ;
+		     }
+#print STDERR ord $value, "\n" ;
+		     $char_handler->( $expat, $value ) ;
+		  }
+	       }
+	       return ;
+	    }
+
 #print STDERR "<$tag>\n" ;
 	    push @stack, {
 	       NAME => $tag,
-	       ATTRS => [@_],
+	       ATTRS => {@_},
 	       CONTENT => ! $self->can( "$tag\_characters" ) ? [] : undef,
 	    } ;
 	    my $sub = "start_$tag" ;
@@ -215,6 +252,8 @@ sub parse_revml_file {
 	 End => sub {
 	    my $expat = shift ;
 	    my $tag = shift ;
+	    return if $tag eq "char" ;
+
 #print STDERR "</$tag>\n" ;
 	    die "Unexpected </$tag>, expected </$stack[-1]>\n"
 	       unless $tag eq $stack[-1]->{NAME} ;
@@ -237,22 +276,7 @@ sub parse_revml_file {
 	    }
 	 },
 
-	 Char => sub {
-	    my $expat = shift ;
-	    my $pelt = $stack[-1] ; ## parent element
-	    my $tag = $pelt->{NAME} ;
-	    my $content = $pelt->{CONTENT} ;
-	    if ( defined $content ) {
-	       if ( @$content && $content->[-1]->{TYPE} eq 'PCDATA' ) {
-	          $content->[-1]->{PCDATA} .= $_[0] ;
-	       }
-	       else {
-	          push @$content, { TYPE => 'PCDATA', PCDATA => $_[0] } ;
-	       }
-	    }
-	    my $sub = "$tag\_characters" ;
-	    $self->$sub( @_ ) if $self->can( $sub ) ;
-	 },
+	 Char => $char_handler,
       },
    ) ;
    $p->parse( $self->{IN_FH} ) ;
@@ -267,7 +291,10 @@ sub start_rev {
    ## TODO: Demystify this hairy wart.  Better yet, simplify all the code
    ## in this module.  It needs to decode the fields as they come in and
    ## stick them in the header and the rev_meta 
-   for ( map $self->{STACK}->[-2]->{$_}, grep /^[a-z_0-9]+$/, keys %{$self->{STACK}->[-2]} ) {
+   for ( map(
+      $self->{STACK}->[-2]->{$_},
+      grep /^[a-z_0-9]+$/, keys %{$self->{STACK}->[-2]}
+   ) ) {
       $self->{HEADER}->{$_->{NAME}} = $_->{CONTENT}->[0]->{PCDATA} ;
    }
 
@@ -319,7 +346,7 @@ sub start_delete {
    my VCP::Source::revml $self = shift ;
 
    $self->init_rev_meta ;
-   $self->{REV}->action( 'delete' ) ;
+   $self->{REV}->action( "delete" ) ;
    ## Clear the work_path so that VCP::Rev doesn't try to delete it.
    $self->{REV}->work_path( undef ) ;
 }
@@ -329,7 +356,7 @@ sub start_move {
    my VCP::Source::revml $self = shift ;
 
    $self->init_rev_meta ;
-   $self->{REV}->action( 'move' ) ;
+   $self->{REV}->action( "move" ) ;
    ## Clear the work_path so that VCP::Rev doesn't try to delete it.
    $self->{REV}->work_path( undef ) ;
    die "<move> unsupported" ;
@@ -341,22 +368,42 @@ sub start_content {
 
    $self->init_rev_meta ;
 #require Data::Dumper ; print Data::Dumper::Dumper( $self->{REV} ) ;
-   $self->{REV}->action( 'edit' ) ;
+   $self->{REV}->action( "edit" ) ;
    $self->{WORK_NAME} = $self->{REV}->work_path ;
+   $self->{UNDECODED_CONTENT} = "" ;
    sysopen $self->{WORK_FH}, $self->{WORK_NAME}, O_WRONLY | O_CREAT | O_TRUNC
       or die "$!: $self->{WORK_NAME}" ;
+
 }
 
 
 sub content_characters {
    my VCP::Source::revml $self = shift ;
-   syswrite $self->{WORK_FH}, $_[0] or die "$! writing $self->{WORK_NAME}" ;
+   if ( $self->{STACK}->[-1]->{ATTRS}->{encoding} eq "base64" ) {
+      $self->{UNDECODED_CONTENT} .= shift ;
+      if ( $self->{UNDECODED_CONTENT} =~ s{(.*\n)}{} ) {
+	 syswrite( $self->{WORK_FH}, decode_base64( $1 ) )
+	    or die "$! writing $self->{WORK_NAME}" ;
+      }
+   }
+   elsif ( $self->{STACK}->[-1]->{ATTRS}->{encoding} eq "none" ) {
+# print STDERR map( sprintf( " %02x=$_", ord ), $_[0] =~ m/(.)/gs ), "\n" ;
+      syswrite $self->{WORK_FH}, $_[0]
+         or die "$! writing $self->{WORK_NAME}" ;
+   }
+   else {
+      die "vcp: unknown encoding '$self->{STACK}->[-1]->{ATTRS}->{encoding}'\n";
+   }
    return ;
 }
 
 sub end_content {
    my VCP::Source::revml $self = shift ;
    
+   if ( length $self->{UNDECODED_CONTENT} ) {
+      syswrite( $self->{WORK_FH}, decode_base64( $self->{UNDECODED_CONTENT} ) )
+	 or die "$! writing $self->{WORK_NAME}" ;
+   }
    close $self->{WORK_FH} or die "$! closing $self->{WORK_NAME}" ;
 
    if ( $self->none_seen ) {
@@ -388,6 +435,8 @@ sub end_delta {
    my VCP::Source::revml $self = shift ;
 
    close $self->{WORK_FH} or die "$! closing $self->{WORK_NAME}" ;
+
+#print STDERR `hexdump -cx $self->{WORK_NAME}` ;
 
    my VCP::Rev $r = $self->{REV} ;
 
@@ -489,7 +538,7 @@ sub end_digest {
    my $work_path = $r->work_path ;
 
    sysopen F, $work_path, O_RDONLY
-      or die "$! opening '$work_path' for digestion\n" ;
+      or die "vcp: $! opening '$work_path' for digestion\n" ;
    $d->addfile( \*F ) ;
    close F ;
    my $reconstituted_digest = $d->b64digest ;
@@ -497,9 +546,22 @@ sub end_digest {
    ## TODO: provide an option to turn this in to a warning
    ## TODO: make this abort writing anything to the dest, but continue
    ## processing, so as to deliver as many error messages as possible.
-   die "Digest check failed for ", $r->name, ",",
-      " revision ", $r->rev_id
-      unless $original_digest eq $reconstituted_digest ;
+   unless ( $original_digest eq $reconstituted_digest ) {
+      my $reject_file_name = $r->name ;
+      $reject_file_name =~ s{[^A-Za-z0-9 -.]+}{-}g ;
+      $reject_file_name =~ s{^-+}{}g ;
+      my $reject_file_path = File::Spec->catfile(
+         File::Spec->tmpdir,
+	 $reject_file_name
+      ) ;
+
+      link $work_path, $reject_file_path 
+         or die "vcp: digest check failed for ", $r->as_string,
+	 "\nvcp: failed to leave copy in '$reject_file_path': $!\n" ;
+
+      die "vcp: digest check failed for ", $r->as_string,
+	 "\nvcp: copy left in '$reject_file_path'\n" ;
+   }
 }
 
 

@@ -26,6 +26,7 @@ use VCP::Rev ;
 
 use fields (
    'REVS',        ## The revs, sorted or not
+   'SEEN',        ## A HASH of keys of form "filename,rev#"
 ) ;
 
 
@@ -45,6 +46,7 @@ sub new {
    }
 
    $self->{REVS} = [] ;
+   $self->{SEEN} = {} ;
 
    return $self ;
 }
@@ -66,7 +68,13 @@ sub add {
       debug( "vcp: queuing ", $_->as_string ) for @_ ;
    }
 
-   push @{$self->{REVS}}, @_ ;
+   for my $r ( @_ ) {
+      my $key = $r->name . "#" . $r->rev_id ;
+      croak "Can't add same revision twice: '" . $r->as_string
+         if $self->{SEEN}->{$key} ;
+      $self->{SEEN}->{$key} = 1 ;
+      push @{$self->{REVS}}, $r ;
+   }
 }
 
 

@@ -108,7 +108,7 @@ use fields (
    'P4_FILESPEC',       ## What revs of what files to get.  ARRAY ref.
    'P4_INFO',           ## Results of the 'p4 info' command
    'P4_LABEL_CACHE',    ## ->{$name}->{$rev} is a list of labels for that rev
-   'P4_LABELS',         ## Array of labels from 'p4 labels'
+#   'P4_LABELS',         ## Array of labels from 'p4 labels'
    'P4_MAX',            ## The last change number needed
    'P4_MIN',            ## The first change number needed
 ) ;
@@ -362,6 +362,8 @@ sub scan_filelog {
 	       return ;
 	    }
 
+	    my $type = $6 ;
+
 	    my $norm_name = $self->normalize_name( $name ) ;
 	    die "\$r defined" if defined $r ;
 	    $r = VCP::Rev->new(
@@ -371,9 +373,14 @@ sub scan_filelog {
 	       action    => $3,
 	       time      => $self->parse_time( $4 ),
 	       user_id   => $5,
-	       type      => $6,
+	       p4_info   => $_,
 	       comment   => '',
 	    ) ;
+
+	    my $is_binary = $type =~ /^(?:u?x?binary|x?tempobj|resource)/ ;
+	    $r->type( $is_binary ? "binary" : "text" ) ;
+
+	    $r->labels( $self->get_p4_file_labels( $name, $r->rev_id ) );
 
 	    ## Filelogs are in newest...oldest order, so this should catch
 	    ## the oldest revision of each file.
@@ -411,12 +418,6 @@ sub scan_filelog {
 	 }
       } ;
 
-      ## I tried to avoid spooling this to a file, but p4 seems to have
-      ## trouble running alongside itself.  The p4 files commands I use
-      ## to get the labelled revs of each file 
-      ## would hang when running against a p4 99.2 server.So, off to a
-      ## file it goes, to be read back in and deleted.
-      ## Another strategy would be to delay labelling o
       $self->p4(
 	 [qw( filelog -m ), $delta, "-l", $spec ],
 	 '>', new_chunker, $p4_filelog_parser
@@ -424,17 +425,6 @@ sub scan_filelog {
       $self->command_stderr_filter( $temp_f ) ;
 
       die "\$r defined" if defined $r ;
-   }
-
-   for my $r ( $self->revs->get ) {
-      ## I do this here instead of when the filelog is parsed so we never
-      ## have 2 p4 commands running at once.  That seems to cause the
-      ## p4 files command to hang occasionally when hitting against
-      ## p4 server v99.2.  I do it before emitting output so
-      ## we die without emitting any output if it fails.  It's done before
-      ## we get base revs.  Labels are incorrect in them and not
-      ## allowed by the DTD.
-      $r->labels( $self->get_p4_file_labels( $r->name, $r->rev_id ) );
    }
 
    my @base_rev_specs ;
@@ -519,10 +509,41 @@ sub load_p4_labels {
    my $errors = '' ;
    $self->p4( ['labels'], \$labels ) ;
 
-   @{$self->{P4_LABELS}} = map(
+   my @labels = map(
       /^Label\s*(\S*)/ ? $1 : (),
       split( /^/m, $labels )
    ) ;
+
+   $self->command_ok_result_codes( 0, 1 ) ;
+
+   while ( @labels ) {
+      my $bundle_size = @labels > 25 ? @labels : 25 ;
+      my @bundle_o_labels = splice @labels, 0, $bundle_size ;
+
+      my $marker = "//.../NtLkly" ;
+      my @p4_files_args = map {
+         ( $marker, "//...\@$_" ) ;
+      } @bundle_o_labels ;
+      my $files ;
+      $self->p4( [ "-s", "files", @p4_files_args ], \$files ) ;
+
+      my $label ;
+      for my $spec ( split /\n/m, $files ) {
+         last if $spec =~ /^exit:/ ;
+         if ( $spec =~ /^error: $marker/o ) {
+	    $label = shift @bundle_o_labels ;
+	    next ;
+	 }
+	 next if $spec =~ m{^error: //\.\.\.\@.+ file(\(s\))? not in label.$} ;
+         $spec =~ /^.*?: *\/\/(.*)#(\d+)/
+	    or die "Couldn't parse name & rev from '$spec' in '$files'" ;
+
+         debug "vcp: p4 label '$label' => '$1#$2'" if debugging $self ;
+	 push @{$self->{P4_LABEL_CACHE}->{$1}->{$2}}, $label ;
+      }
+   }
+   $self->command_ok_result_codes( 0 ) ;
+
    return ;
 }
 
@@ -540,82 +561,16 @@ sub get_p4_file_labels {
    my VCP::Rev $rev ;
    ( $name, $rev ) = @_ ;
 
-   my $labels = $self->{P4_LABELS} ;
-
-   if ( ! exists $self->{P4_LABEL_CACHE}->{$name} && @$labels ) {
-      my $files = '' ;
-      my $errors = '' ;
-
-      $self->p4(
-         ['files', map $self->denormalize_name( $name ) . "\@$_", @$labels ],
-	    '>', \$files,
-            '2>', \$errors,
-	    '&', timeout( 60 ),
-      );
-
-      ## Build a list of labels that don't match, so we can skip them
-      ## when scanning stdout.
-      my %no_match = map { ( $_ => 1 ) } $errors =~ /\@(\S+)/g ;
-      my @labels = grep ! exists $no_match{$_}, @$labels ;
-
-      for ( split( /^/m, $files ) ) {
-	 if ( /^\S+?#(\d+)/ ) {
-	    die "Ran out of labels before running out of files"
-	       unless @labels ;
-	    push @{$self->{P4_LABEL_CACHE}->{$name}->{$1}}, shift @labels ;
-	 }
-	 else {
-	    die "Indecipherable output from 'p4 files': $_" ;
-	 }
-      } ;
-      die "Ran out of files before running out of labels"
-	 if @labels ;
-   }
-
    return (
       (  exists $self->{P4_LABEL_CACHE}->{$name}
       && exists $self->{P4_LABEL_CACHE}->{$name}->{$rev}
       )
-	 ?  @{$self->{P4_LABEL_CACHE}->{$name}->{$rev}}
+	 ? @{$self->{P4_LABEL_CACHE}->{$name}->{$rev}}
 	 : ()
    ) ;
 }
 
 
-#sub get_rev {
-#   my VCP::Source::p4 $self = shift ;
-#
-#   my VCP::Rev $r ;
-#   ( $r ) = @_ ;
-#
-#   my $fn  = $r->name ;
-#   my $rev = $r->rev_id ;
-#   $r->work_path( $self->work_path( $fn, $rev ) ) ;
-#   my $wp  = $r->work_path ;
-#   $self->mkpdir( $wp ) ;
-#
-#   ## TODO: Don't filter non-text files.
-#   ## TODO: Consider using a 'p4 sync' command to restore the modification
-#   ## time so we can capture it.
-#   $self->p4(
-#      [ 'print', $self->denormalize_name( $fn ) . "#$rev" ],
-#      '|', sub {
-#         @ARGV = () ;   ## Make this a STDIN filter.
-#         <> ;           ## Throw away the first line, a p4 file header line
-#	 while (<>) {
-#	    print ;
-#	 }
-#	 close STDOUT ;
-#	 ## TODO: Rework this to get rid of dependancy on Unix signals
-#	 kill 9, $$ ;   ## Exit without running DESTRUCTs.
-#      },
-#      '>', $wp,
-#   ) ;
-#
-#   return ;
-#}
-#
-#
 sub get_revs {
    my VCP::Source::p4 $self = shift ;
 
@@ -647,39 +602,49 @@ sub get_revs {
    my $dispatch_prog = <<'EOPERL' ;
       use strict ;
       my ( $name, $working_path ) = ( shift, shift ) ;
-      my $re = quotemeta( $name . " - " ) . ".* change \\d+ \\(\\w+\\)";
+      my $re = "info: " . quotemeta( $name ) . " - .* change \\d+ \\((.+)\\)\$";
       my $found_header ;
       my $found_this_header ;
+      my $header_like = '' ;
       while (<STDIN>) {
-	 if ( defined $re && /^$re/ ) {
+	 if ( defined $re && /$re/m ) {
 	    $found_header = 1 ;
 	    $found_this_header = 1 ;
 	    open( STDOUT, ">$working_path" )
 	       or die ">$working_path" ;
 	    if ( @ARGV ) {
 	       ( $name, $working_path ) = ( shift, shift ) ;
-	       $re = quotemeta( $name . " - " ) . ".* change \\d+ \\(\\w+\\)";
+	       $re = "info: " . quotemeta( $name ) . " - .* change \\d+ \\((.+)\\)\$";
 	       $found_this_header = 0 ;
+	       $header_like = "" ;
 	    }
 	    else {
 	       undef $re ;
 	    }
 	    next ;
 	 }
-	 die "No header found" unless $found_header ;
+	 die "No header found for '$name' in '$_' using qr{$re}"
+	    unless $found_header ;
+	 $header_like = $_ if ! length $header_like && m{\/\/.*#\d+ - } ;
+	 s/^text: // ;
+	 next if /^exit: \d+/ ;
 	 print ;
       }
 
       unshift @ARGV, ( $name, $working_path ) unless $found_this_header ;
 
-      die "Did not find ", @ARGV / 2, " files in p4 print output\n",
+      die(
+         "Did not find ",
+         @ARGV / 2,
+         " files in p4 print output\n",
+	 ( length $header_like ? "suspect qr{$header_like} didn't match\n":()),
          join( '', map "'$_'\n", @ARGV )
-         if @ARGV ;
+      ) if @ARGV ;
 EOPERL
 
    $self->p4(
-      [ 'print', @rev_specs ],
-      '|', [ $^X, "-we", $dispatch_prog, @dispatcher_args ]
+      [ "-s", "print", @rev_specs ],
+      "|", [ $^X, "-we", $dispatch_prog, @dispatcher_args ]
    ) ;
 
    return ;
@@ -711,7 +676,7 @@ sub copy_revs {
    my @bundle_o_revs ;
    my %bundled_rev_names ;
    while ( $r = $self->revs->shift ) {
-      if ( exists $bundled_rev_names{$r->name} ) {
+      if ( @bundle_o_revs >= 50 ) {#|| exists $bundled_rev_names{$r->name} ) {
          $self->get_revs( @bundle_o_revs ) ;
 	 $self->dest->handle_rev( $_ ) for @bundle_o_revs ;
 	 @bundle_o_revs = () ;
@@ -722,7 +687,10 @@ sub copy_revs {
    }
 
    $self->get_revs( @bundle_o_revs ) ;
-   $self->dest->handle_rev( $_ ) for @bundle_o_revs ;
+   for ( @bundle_o_revs ) {
+      debug "vcp: sending ", $_->as_string, " to dest" if debugging $self ;
+      $self->dest->handle_rev( $_ ) 
+   }
 }
 
 

@@ -3,7 +3,7 @@ use ExtUtils::MakeMaker;
 use strict ;
 use vars qw( $VERSION ) ;
 
-$VERSION = 0.04 ;
+$VERSION = 0.05 ;
 
 my @programs = qw( vcp ) ;
 
@@ -49,6 +49,7 @@ WriteMakefile(
     'EXE_FILES'     => [ map "bin/$_", @programs ],
     'PREREQ_PM'     => {
         'IPC::Run'         => 0,
+	'MIME::Base64'     => 0,
 	'Regexp::Shellish' => 0,
         'XML::AutoWriter'  => 0,
 	'XML::Parser'      => 0,

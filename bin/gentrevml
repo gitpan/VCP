@@ -83,11 +83,16 @@ if ( $debug ) {
 my @files ;
 ## Put @files in alpha order.  p4 likes to output in alpha order, and this
 ## makes comparing p4->revml output to revml->p4 input easier.
-for    my $dir     ( 'add', 'del' ) {
-   for my $file    ( 'f1'..'f4' ) {
-      my $fn = "$dir/$file" ;
-      next if $fn eq "del/f1" ; # Can't delete in change 1
-      push @files, $fn ;
+for    my $main ( qw( add binary del ) ) {
+   if ( $main eq "add" || $main eq "del" ) {
+      for my $file    ( qw( f1 f2 f3 f4 ) ) {
+	 my $fn = "$main/$file" ;
+	 next if $fn eq "del/f1" ; # Can't delete in change 1
+	 push @files, $fn ;
+      }
+   }
+   else {
+      push @files, $main ;
    }
 }
 
@@ -128,18 +133,24 @@ my @changes ;
 
 	 print STDERR "   $name#$rev_num{$name}:" if $debug ;
 
-	 my $content = "$name, revision $rev_num{$name}\n" ;
+	 my $content = sprintf(
+	    qq{%s, revision %d, char 0x%02x="%s"\n},
+	    $name,
+	    $rev_num{$name},
+	    $counter,
+	    chr( $counter ),
+	 ) ;
 
 	 my $r = {
 	    name    => $name,
-	    type    => 'text',
+	    type    => $name eq "binary" ? "binary" : "text",
 	    user_id => $user_id,
 	    content => $content,
 	    time    => "2000-01-01 12:00:${counter}Z",
 	    ## In p4, all files in a change number have an identical comment.
 	    ## We impose this on the other solutions to test foo->p4 change
 	    ## number aggregation.
-	    comment => "foo$change_num\n",
+	    comment => "comment $change_num\n",
 	 } ;
 
 	 ## p4 doesn't handle modtime until very recently, and then it
@@ -210,6 +221,28 @@ use Digest::MD5 qw( md5_base64 ) ;
 use File::Basename ;
 use RevML::Doctype 'DEFAULT' ;
 use RevML::Writer qw( :all :dtd_tags ) ;
+
+
+sub _emit_characters {
+   my ( $buf ) = @_ ;
+
+   setDataMode( 0 ) ;
+   ## note that we don't let XML munge \r to be \n!
+   while ( $buf =~ m{\G(?:
+      (  [ \x00-\x08\x0b-\x1f\x7f-\xff])
+      | ([^\x00-\x08\x0b-\x1f\x7f-\xff]*)
+      )}gx
+   ) {
+      if ( defined $1 ) {
+	 char( "", code => sprintf( "0x%02x", ord $1 ) ) ;
+      }
+      else {
+	 characters( $2 ) ;
+      }
+   }
+
+}
+
 
 my $prog = basename $0 ;
 my $f0 = "$prog.0" ;
@@ -288,7 +321,10 @@ for my $change_num ( ( ! $batch ) ? (1..3) : $bootstrap ? (4..6) : (3..6) ) {
 	 else {
 	    if ( ! $pr ) {
 	       print STDERR " content" if $debug ;
-	       content $r->{content}, encoding => 'none' ;
+	       start_content encoding => "none" ;
+	       _emit_characters $r->{content} ;
+	       end_content ;
+	       setDataMode( 1 ) ;
 	    }
 	    else {
 	       print STDERR " delta" if $debug ;
@@ -300,9 +336,12 @@ for my $change_num ( ( ! $batch ) ? (1..3) : $bootstrap ? (4..6) : (3..6) ) {
 	       open  R1, ">$f1"                   or die "$!: $f1" ; 
 	       print R1 $r->{content}             or die "$!: $f1" ;
 	       close R1                           or die "$!: $f1" ;
-	       my $diff = `diff -u $f0 $f1` ;
+	       my $diff = `diff -a -u $f0 $f1` ;
 	       $diff =~ s/^.+?^.+?^//ms ;
-	       delta $diff, type => 'diff-u', encoding => 'none' ;
+	       start_delta type => 'diff-u', encoding => 'none' ;
+	       _emit_characters $diff ;
+	       end_delta ;
+	       setDataMode( 1 ) ;
 	    }
 	 }
       }

@@ -1,5 +1,49 @@
 CHANGES for vcp - Version CoPy
 
+0.05 Mon Dec 18 07:27:53 EST 2000
+   - Use `p4 labels //...@label` command as per Rober Cowham's suggestion, with
+     the '-s' flag recommended by Christopher Siewald and
+     Amaury.FORGEOTDARC@atsm.fr.  Though it's actually something like 
+       
+       vcp: running /usr/bin/p4 -u safari -c safari -p localhost:5666 -s files
+       //.../NtLkly //...@compiler_a3 //.../NtLkly //...@compiler_may3
+       
+     and so //on //for 50 parameters to get the speed up.  I use the
+     //.../NtLkly "file" as //a separator between the lists of files in various
+     //revisions.  Hope nobody has any files named that :-).  What I should do
+     is choose a random label that doesn't occur in the labels list, I guess.
+   - VCP::Source::revml and VCP::Dest::revml are now binary, control code, and
+     "hibit ASCII" (I know, that's an oxymoron) clean.  The <comment>, <delta>,
+     and <content> elements now escape anything other than tab, line feed,
+     space, or printable chars (32 <= c <= ASCII 126) using a tag like '<char
+     code="0x09">'.  The test suite tests all this.  Filenames should also
+     be escaped this way, but I didn't get to that.
+   - The decision whether to do deltas or encode the content in base64 is now
+     based on how many characters would need to be escaped.
+   - We now depend on the users' diff program to have a "-a" option to force it
+     to diff even if the files look binary to it.  I need to use Diff.pm and
+     adapt it for use on binary data.
+   - VCP::Dest::cvs now makes sure that no two consecutive revisions of the
+     same file have the same mod_time.  VCP::Source::p4 got so fast at pulling
+     revisions from the repositories the test suite sets up that CVS was not
+     noticing that files had changed.
+   - VCP::Plugin now allows you to set a list of acceptable result codes, since
+     we now use p4 in ways that make it return non-zero result codes.
+   - VCP::Revs now croaks if you try to add two entries of the same VCP::Rev
+     (ie matching filename and rev_id).
+   - The <type> tag is now limited to "text" or "binary", and is meant to
+     pass that level of info between foreign repositories.
+   - The <p4_info> on each file now carries the one line p4 description of
+     the file so that p4->p4 transferes can pick out the more detailed
+     info.  VCP::Source::p4, VCP::Dest::p4 do this.
+   - VCP::{Source,Dest}::{p4,cvs} now set binaryness on added files properly,
+     I think.  For p4->p4, the native p4 type is preserved.  For CVS sources,
+     seeing the keyword substitution flag 'o' or 'b' implies binaryness, for
+     p4, seeing a filetype like qr/u?x?binary/ or qr/x?tempobj/ or "resource"
+     implies binaryness (to non-p4 destinations).  NOTE: Seeing a 'o' or 'b'
+     in a CVS source only ends up setting the 'b' option on the destination.
+     That should be ok for most uses, but we can make it smarter for cvs->cvs
+     transfers if need be.
 
 0.04 Tue Dec 12 00:15:57 EST 2000
    - Reorg of VCP::Source::p4

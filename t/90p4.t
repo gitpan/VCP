@@ -91,6 +91,8 @@ $out =~ s{<rep_desc>.*?</rep_desc>}{<rep_desc><!--deleted by p4.t--></rep_desc>}
 $in =~ s{<time>.*?</time>}{<time><!--deleted by p4.t--></time>}sg ;
 $out =~ s{<time>.*?</time>}{<time><!--deleted by p4.t--></time>}sg ;
 
+      $out =~ s{\s*<p4_info>.*?</p4_info>}{}sg ;
+
       ## The r_ and ch_ labels are not present in the source files.
       $out =~ s{.*<label>(r|ch)_\w+</label>\r?\n\r?}{}g ;
 
@@ -192,6 +194,8 @@ $out =~ s{<user_id>.*?</user_id>}{<user_id><!--deleted by p4.t--></user_id>}sg ;
 $in =~ s{<time>.*?</time>}{<time><!--deleted by p4.t--></time>}sg ;
 $out =~ s{<time>.*?</time>}{<time><!--deleted by p4.t--></time>}sg ;
 
+$out =~ s{\s*<p4_info>.*?</p4_info>}{}sg ;
+
 open F, ">$infile_t" ; print F $in ; close F ;
 open F, ">$outfile_t" ; print F $out ; close F ;
 
@@ -245,7 +249,7 @@ sub {
 
       ok( 1 ) ;
 
-      run [ $perl, $vcp, "-d", ".*", "$p4spec...\@$incr_change,#head" ], \undef, \$out
+      run [ $perl, $vcp, "$p4spec...\@$incr_change,#head" ], \undef, \$out
 	 or die "`$vcp $p4spec...\@$incr_change,#head` returned $?" ;
 
       my $in = slurp $infile ;
@@ -258,6 +262,7 @@ $out =~ s{<rep_desc>.*?</rep_desc>}{<rep_desc><!--deleted by p4.t--></rep_desc>}
 $in =~ s{<time>.*?</time>}{<time><!--deleted by p4.t--></time>}sg ;
 $out =~ s{<time>.*?</time>}{<time><!--deleted by p4.t--></time>}sg ;
 
+      $out =~ s{\s*<p4_info>.*?</p4_info>}{}sg ;
       ## The r_ and ch_ labels are not present in the source files.
       $out =~ s{.*<label>(r|ch)_\w+</label>\r?\n\r?}{}g ;
 
@@ -315,6 +320,7 @@ $out =~ s{<rep_desc>.*?</rep_desc>}{<rep_desc><!--deleted by p4.t--></rep_desc>}
 $in =~ s{<time>.*?</time>}{<time><!--deleted by p4.t--></time>}sg ;
 $out =~ s{<time>.*?</time>}{<time><!--deleted by p4.t--></time>}sg ;
 
+      $out =~ s{\s*<p4_info>.*?</p4_info>}{}sg ;
       ## The r_ and ch_ labels are not present in the source files.
       $out =~ s{.*<label>(r|ch)_\w+</label>\r?\n\r?}{}g ;
 

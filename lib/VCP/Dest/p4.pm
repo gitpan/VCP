@@ -221,9 +221,13 @@ debug "vcp: handle_rev got $r ", $r->name if debugging $self ;
    else {
    ## TODO: Don't assume same filesystem or working link().
       {
+         my $filetype = defined $r->p4_info && $r->p4_info =~ /\((\S+)\)$/
+	    ? $1
+	    : $r->type ;
+
          my $add_it ;
 	 if ( -e $work_path ) {
-	    $self->p4( ['edit', $fn] ) ;
+	    $self->p4( ["edit", "-t", $filetype, $fn] ) ;
 	    unlink $work_path          or die "$! unlinking $work_path" ;
 	 }
 	 else {
@@ -240,11 +244,8 @@ debug "vcp: handle_rev got $r ", $r->name if debugging $self ;
 	    utime $r->mod_time, $r->mod_time, $work_path
 	       or die "$! changing times on $work_path" ;
 	 }
-	 else {
-#	    warn "vcp: no modification time available for $fn\n" ;
-	 }
 	 if ( $add_it ) {
-	    $self->p4( ['add', $fn] ) ;
+	    $self->p4( ["add", "-t", $filetype, $fn] ) ;
 	 }
       }
 

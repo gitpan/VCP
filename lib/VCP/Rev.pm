@@ -260,11 +260,11 @@ sub DESTROY {
    my VCP::Rev $self = shift ;
    $self->work_path( undef ) ;
    $self->dest_work_path( undef ) ;
-#   my $doomed = $self->work_path ;
-#   if ( defined $doomed && -e $doomed ) {
-#      debug "vcp: $self unlinking '$doomed'" if debugging $self ;
-#      unlink $doomed or warn "$! unlinking $doomed\n" ;
-#   }
+   my $doomed = $self->work_path ;
+   if ( defined $doomed && -e $doomed ) {
+      debug "vcp: $self unlinking '$doomed'" if debugging $self ;
+      unlink $doomed or warn "$! unlinking $doomed\n" ;
+   }
 }
 
 

@@ -1,0 +1,20 @@
+TODO for VCP
+
+*NOTE* Doing a `grep -r TODO lib bin` will find lots of small things and
+future feature ideas.  This file will grow to include the more important
+of those.
+
+- Bugfixes
+  - Make <rev_root> and <name> escape their characters
+  - VCP::Dest::cvs needs to set the binary mode properly on files it
+    creates and checks in
+  - VCP::Source::cvs needs to deduce binary modes correctly
+
+- Feature Adds
+  - Need to make the transfers more transactional, so we can recover
+    from where we left off when something fails.
+  - Need to save some sort of state as to where the last export ended
+    so the next one can start from there.
+
+- Efficiency
+  - The cvs drivers can be made faster

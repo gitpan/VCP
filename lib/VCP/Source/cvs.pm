@@ -209,17 +209,17 @@ sub new {
 ##TODO: Add option to Regexp::Shellish to allow '...' instead of or in
 ## addition to '**'.
    GetOptions(
-      'b|bootstrap:s'   => sub {
+      "b|bootstrap:s"   => sub {
 	 my ( $name, $val ) = @_ ;
-	 $self->{CVS_BOOTSTRAP} = $val eq ''
-	    ? [ compile_shellish( '**' ) ]
+	 $self->{CVS_BOOTSTRAP} = $val eq ""
+	    ? [ compile_shellish( "**" ) ]
 	    : [ map compile_shellish( $_ ), split /,+/, $val ] ;
       },
-      'cd=s'          => \$work_dir,
-      'rev-root=s'    => \$rev_root,
-      'r=s'           => \$rev_spec,
-      'd=s'           => \$date_spec,
-      'f+'            => \$force_missing,
+      "cd=s"          => \$work_dir,
+      "rev-root=s"    => \$rev_root,
+      "r=s"           => \$rev_spec,
+      "d=s"           => \$date_spec,
+      "f+"            => \$force_missing,
    ) or $self->usage_and_exit ;
 
    unless ( defined $rev_spec || defined $date_spec ) {
@@ -714,11 +714,13 @@ sub _add_rev {
    my $norm_name = $self->normalize_name( $file_data->{WORKING} ) ;
    my $action = $rev_data->{STATE} eq "dead" ? "delete" : "edit" ;
 
+   my $type = $file_data->{KEYWORD} =~ /[o|b]/ ? "binary" : "text" ;
+
    my VCP::Rev $r = VCP::Rev->new(
       source_name => $file_data->{WORKING},
       name        => $norm_name,
       rev_id      => $rev_data->{REV},
-      type        => 'text',
+      type        => $type,
 #      ! $is_base_rev
 #	 ? (
 	    action      => $action,

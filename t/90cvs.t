@@ -187,6 +187,7 @@ $out =~ s{<base_rev_id>}{<base_rev_id>1.}g ;
 $in =~ s{<user_id>.*?</user_id>}{<user_id><!--deleted by cvs.t--></user_id>}sg ;
 $out =~ s{<user_id>.*?</user_id>}{<user_id><!--deleted by cvs.t--></user_id>}sg;
 
+$out =~ s{\s*<p4_info>.*?</p4_info>}{}sg ;
 
 #      ## The r_ and ch_ labels are not present in the source files.
 #      $out =~ s{.*<label>(r|ch)_\w+</label>\r?\n\r?}{}g ;
