@@ -206,7 +206,7 @@ sub parse_repo_spec {
       return $result unless s/(?:^|:)([^:]*)$// ;
       $result->{FILES} = $1 ;
 
-      if ( s/^([^\@:]*)(?::([^\@:]*))?@// ) {
+      if ( s/^([^\@]*?)(?::([^\@:]*))?@// ) {
          if ( defined $1 ) {
 	    $result->{USER}     = $1 ;
 	    $self->repo_user( $1 ) ;

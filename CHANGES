@@ -1,5 +1,8 @@
 CHANGES for vcp - Version CoPy
 
+0.063 Tue Apr 24 23:57:28 EDT 2001
+   - Fixed bug in parsing of repo specs (scheme:user:passwd@server:files)
+
 0.062 Tue Apr 17 14:07:48 EDT 2001
    - Added the requirement to install expat first to INSTALL
    - Commented out the call to "vcp help" to prevent perldoc from whining
